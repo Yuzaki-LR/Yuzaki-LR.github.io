@@ -1,0 +1,19 @@
+---
+import { getCollection } from 'astro:content';
+import ProjectListItem from '../../components/ProjectListItem.astro';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+const projects = (await getCollection('projects')).sort((a, b) => a.data.order - b.data.order);
+---
+
+<BaseLayout
+  title="Projects | Yunxi Wu"
+  description="Selected electronic and electrical engineering projects by Yunxi Wu."
+  activeNav="Projects"
+>
+  <h1>Projects</h1>
+  <p class="lead">Selected work in systems engineering, power and control simulation, and communication-system analysis.</p>
+  <div class="project-list">
+    {projects.map((project) => <ProjectListItem project={project} />)}
+  </div>
+</BaseLayout>

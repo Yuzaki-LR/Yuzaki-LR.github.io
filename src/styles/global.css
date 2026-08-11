@@ -252,3 +252,104 @@ main h3 {
     flex-direction: column;
   }
 }
+
+.eyebrow,
+.project-meta,
+.project-summary dt {
+  font-family: Arial, "Helvetica Neue", sans-serif;
+  font-size: 0.75rem;
+}
+
+.eyebrow {
+  margin: 0 0 0.55rem;
+  color: var(--accent);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.project-list {
+  border-top: 1px solid var(--rule);
+}
+
+.project-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.42fr);
+  gap: 2rem;
+  padding: 1.25rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.project-row h3,
+.project-row p {
+  margin: 0;
+}
+
+.project-row p {
+  margin-top: 0.4rem;
+  color: var(--muted);
+}
+
+.project-meta,
+.project-summary {
+  margin: 0;
+}
+
+.project-meta div,
+.project-summary div {
+  margin-bottom: 0.55rem;
+}
+
+.project-meta dt,
+.project-summary dt {
+  color: var(--muted);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.project-meta dd,
+.project-summary dd {
+  margin: 0.12rem 0 0;
+}
+
+.project-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 1.5rem;
+  padding: 1rem;
+  border: 1px solid var(--rule);
+  background: var(--surface);
+}
+
+.evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+}
+
+.evidence-grid figure {
+  margin: 0;
+}
+
+.evidence-grid img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--rule);
+  background: #fff;
+}
+
+.evidence-grid figcaption {
+  margin-top: 0.55rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+@media (max-width: 680px) {
+  .project-row,
+  .project-summary,
+  .evidence-grid {
+    grid-template-columns: 1fr;
+  }
+}

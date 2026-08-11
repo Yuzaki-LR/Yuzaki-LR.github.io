@@ -1,0 +1,43 @@
+---
+import { getCollection } from 'astro:content';
+import type { CollectionEntry } from 'astro:content';
+import EvidenceGallery from '../../components/EvidenceGallery.astro';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+export async function getStaticPaths() {
+  const projects = await getCollection('projects');
+  return projects.map((project) => ({
+    params: { id: project.id },
+    props: { project },
+  }));
+}
+
+interface Props {
+  project: CollectionEntry<'projects'>;
+}
+
+const { project } = Astro.props;
+const data = project.data;
+---
+
+<BaseLayout
+  title={`${data.shortTitle} | Yunxi Wu`}
+  description={data.summary}
+  activeNav="Projects"
+>
+  <p class="eyebrow">{data.type}</p>
+  <h1>{data.title}</h1>
+  <p class="lead">{data.summary}</p>
+
+  <dl class="project-summary">
+    <div><dt>Role</dt><dd>{data.role}</dd></div>
+    <div><dt>Methods and tools</dt><dd>{data.tools.join(' 路 ')}</dd></div>
+  </dl>
+
+  <section><h2>Overview</h2>{data.overview.map((paragraph) => <p>{paragraph}</p>)}</section>
+  <section><h2>My Contribution</h2><ul>{data.contributions.map((item) => <li>{item}</li>)}</ul></section>
+  <section><h2>Technical Approach</h2>{data.technicalApproach.map((paragraph) => <p>{paragraph}</p>)}</section>
+  <section><h2>Results &amp; Validation</h2>{data.results.map((paragraph) => <p>{paragraph}</p>)}</section>
+  <section><h2>Evidence Gallery</h2><EvidenceGallery evidence={data.evidence} /></section>
+  <section><h2>Reflection &amp; Next Steps</h2>{data.reflection.map((paragraph) => <p>{paragraph}</p>)}</section>
+</BaseLayout>

@@ -1,6 +1,12 @@
 ---
+import { getCollection } from 'astro:content';
+import ProjectListItem from '../components/ProjectListItem.astro';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { site } from '../data/site.mjs';
+
+const projects = (await getCollection('projects'))
+  .filter((project) => project.data.featured)
+  .sort((a, b) => a.data.order - b.data.order);
 ---
 
 <BaseLayout
@@ -10,6 +16,14 @@ import { site } from '../data/site.mjs';
 >
   <h1>About</h1>
   <p class="lead">{site.intro}</p>
+
+  <section>
+    <h2>Selected Projects</h2>
+    <div class="project-list">
+      {projects.map((project) => <ProjectListItem project={project} />)}
+    </div>
+  </section>
+
   <div class="notice">
     <strong>Current direction</strong>
     <p>{site.currentDirection}</p>
