@@ -111,6 +111,7 @@ const privacyContextBoundaryTags = new Set([
   'header',
   'hgroup',
   'html',
+  'hr',
   'legend',
   'li',
   'main',
