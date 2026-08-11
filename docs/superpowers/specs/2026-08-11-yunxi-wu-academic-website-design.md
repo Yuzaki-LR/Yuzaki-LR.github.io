@@ -30,7 +30,7 @@ The browsing hierarchy is designed for three depths:
 
 - approximately 10 seconds: identity, degree, university, and research interests;
 - approximately 60 seconds: selected EEE project evidence and manuscript status;
-- extended review: project-detail pages, contribution boundaries, technical evidence, and CV.
+- extended review: project-detail pages, contribution boundaries, and technical evidence.
 
 ## 3. Verified public profile
 
@@ -41,13 +41,14 @@ Use only the following confirmed identity facts in version 1:
 - Institution: **University of Birmingham**
 - Research interests: **Embodied AI, Computer Vision, and Robotics**
 - Current position: undergraduate student
+- Public email: **yxw1331@student.bham.ac.uk**
 - Site language: English
 
 Approved homepage introduction:
 
 > I am a BEng Electronic and Electrical Engineering student at the University of Birmingham. My current academic work spans systems design, modelling, control, and signal processing. I am developing toward research in Embodied AI, Computer Vision, and Robotics.
 
-Do not add a graduation year, academic grade, scholarship, award, affiliation, location, email address, social account, or other personal fact unless the user supplies or verifies it.
+Do not add a graduation year, academic grade, scholarship, award, affiliation, location, any other contact address, social account, or personal fact unless the user supplies or verifies it.
 
 ## 4. Design direction
 
@@ -59,7 +60,7 @@ Use the approved **restrained academic sidebar** direction:
 - compact top navigation;
 - profile and links in a left sidebar on wide screens;
 - academic content in the main right column;
-- serif headings with sans-serif body copy;
+- Times New Roman as the primary typeface for headings and most body copy;
 - thin rules and low-saturation blue-grey accents;
 - conventional text entries instead of large portfolio cards;
 - no decorative gradients, oversized display headlines, parallax, or attention-seeking animation.
@@ -76,10 +77,10 @@ Initial design tokens:
 - secondary text: `#656c73`;
 - rule/border: `#dfe2e6`;
 - primary accent: `#2d587a`;
-- headings: Georgia, `Times New Roman`, serif fallback;
-- body: Arial, `Helvetica Neue`, sans-serif fallback.
+- primary headings and body: `Times New Roman`, Times, serif fallback;
+- small navigation, metadata, and interface labels may use Arial or `Helvetica Neue` as a secondary sans-serif treatment.
 
-Use system fonts so the site has no remote-font dependency. Hover treatments should be limited to link colour or underline changes. Keyboard focus must remain clearly visible.
+Use Times New Roman for the clear majority of visible text. Use system fonts so the site has no remote-font dependency. Hover treatments should be limited to link colour or underline changes. Keyboard focus must remain clearly visible.
 
 ### 4.3 Responsive behaviour
 
@@ -91,7 +92,7 @@ Use system fonts so the site has no remote-font dependency. Hover treatments sho
 
 ## 5. Information architecture
 
-The approved version 1 is a focused multi-page site with four primary navigation items.
+The approved version 1 is a focused multi-page site with three primary navigation items.
 
 ### 5.1 About
 
@@ -131,19 +132,6 @@ Use three distinct categories:
 - **Research & Manuscripts** — submitted writing and, later, verified publications.
 
 Do not create a Publications section in version 1. A publication category may be introduced only when a work is accepted or published and its bibliographic status is verified.
-
-### 5.4 CV
-
-Provide a web summary structured around:
-
-- Education
-- Research interests
-- Selected projects
-- Technical skills
-- Research and manuscripts
-- Contact links
-
-Show a downloadable English CV only after the user supplies the final PDF. Until then, omit the download control rather than provide a dead link.
 
 ## 6. Initial content model
 
@@ -235,13 +223,11 @@ Figures must be cropped or recreated from verified source material so that they 
 
 ## 8. Pending user inputs
 
-The site can be built locally before these are supplied, but unavailable public controls must be omitted rather than faked.
+The site can be built locally before these are supplied, but unavailable public controls must be omitted rather than faked. The confirmed public contact email is `yxw1331@student.bham.ac.uk` and should be displayed as a working `mailto:` link.
 
 - GitHub username — required before final repository configuration
-- public email address — optional
 - GitHub profile URL — optional until username is known
 - LinkedIn URL — optional
-- final English CV PDF — required for a download link
 - profile photograph — optional; use a neutral `YW` monogram until provided
 
 ## 9. Technical design
@@ -268,7 +254,6 @@ src/
     index.astro
     projects/
     research.astro
-    cv.astro
   styles/
 public/
   assets/
@@ -307,7 +292,7 @@ The implementation must include:
 - responsive layouts for desktop, tablet, and mobile;
 - no publication of source-document metadata or sensitive embedded content.
 
-Version 1 does not require a blog, CMS, comments, tracking analytics, theme switcher, Chinese translation, contact form, search, or generated social-preview image.
+Version 1 does not include a CV page or CV download. It also does not require a blog, CMS, comments, tracking analytics, theme switcher, Chinese translation, contact form, search, or generated social-preview image.
 
 ## 11. Build and review workflow
 
@@ -326,7 +311,7 @@ Version 1 does not require a blog, CMS, comments, tracking analytics, theme swit
 
 The first version is complete when:
 
-- About, Projects, Research, and CV routes build successfully;
+- About, Projects, and Research routes build successfully;
 - three project-detail pages use the approved evidence template;
 - the Future Ocean Habitat contribution boundary is explicit;
 - the manuscript status appears exactly as approved;
@@ -345,5 +330,6 @@ The first version is complete when:
 - publishing raw coursework or the manuscript;
 - presenting a full publication list before verified publications exist;
 - adding a backend, database, authentication, contact form, analytics, or CMS;
+- adding a CV page or downloadable CV;
 - adding speculative projects, achievements, dates, metrics, or affiliations;
 - creating a Chinese-language duplicate before the English site is complete.
