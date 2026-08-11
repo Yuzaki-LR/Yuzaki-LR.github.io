@@ -80,20 +80,126 @@ function decodedAttributeValues($) {
   return $('*').toArray().flatMap((element) => Object.values(element.attribs ?? {}));
 }
 
-function decodedTextValues($) {
-  const values = [];
-
-  function visit(node) {
-    if (node.type === 'text') values.push(node.data ?? '');
-    for (const child of node.children ?? []) visit(child);
-  }
-
-  visit($.root()[0]);
-  return values;
-}
-
 function normalizedPrivacyText(value) {
   return value.normalize('NFKC').replace(/[\s\p{Z}]+/gu, ' ').trim();
+}
+
+const privacyContextBoundaryTags = new Set([
+  'address',
+  'article',
+  'aside',
+  'blockquote',
+  'body',
+  'caption',
+  'dd',
+  'details',
+  'dialog',
+  'div',
+  'dl',
+  'dt',
+  'fieldset',
+  'figcaption',
+  'figure',
+  'footer',
+  'form',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'header',
+  'hgroup',
+  'html',
+  'legend',
+  'li',
+  'main',
+  'menu',
+  'nav',
+  'ol',
+  'p',
+  'pre',
+  'search',
+  'section',
+  'summary',
+  'table',
+  'tbody',
+  'td',
+  'tfoot',
+  'th',
+  'thead',
+  'tr',
+  'ul',
+  'a',
+  'button',
+  'datalist',
+  'input',
+  'label',
+  'meter',
+  'optgroup',
+  'option',
+  'output',
+  'progress',
+  'select',
+  'textarea',
+  'head',
+  'noscript',
+  'script',
+  'style',
+  'template',
+  'title',
+  'audio',
+  'canvas',
+  'iframe',
+  'math',
+  'object',
+  'svg',
+  'video',
+]);
+
+function decodedTextContexts($) {
+  const contextChunks = [];
+
+  function append(currentContext, value) {
+    const context = currentContext ?? [];
+    if (currentContext === null) contextChunks.push(context);
+    context.push(value);
+    return context;
+  }
+
+  function visitInline(node, currentContext) {
+    if (node.type === 'text') return append(currentContext, node.data ?? '');
+
+    const tagName = (node.tagName ?? '').toLowerCase();
+    if (tagName === 'br') return append(currentContext, ' ');
+    if (privacyContextBoundaryTags.has(tagName)) {
+      visitBoundary(node);
+      return null;
+    }
+
+    let context = currentContext;
+    for (const child of node.children ?? []) context = visitInline(child, context);
+    return context;
+  }
+
+  function visitBoundary(node) {
+    let currentContext = null;
+
+    for (const child of node.children ?? []) {
+      const tagName = (child.tagName ?? '').toLowerCase();
+      if (privacyContextBoundaryTags.has(tagName)) {
+        visitBoundary(child);
+        currentContext = null;
+      } else {
+        currentContext = visitInline(child, currentContext);
+      }
+    }
+  }
+
+  visitBoundary($.root()[0]);
+  return contextChunks
+    .map((chunks) => normalizedPrivacyText(chunks.join('')))
+    .filter((context) => context !== '');
 }
 
 function externalWebUrl(value) {
@@ -112,9 +218,11 @@ function assertNoAbsoluteLocalPath(value, context) {
   const candidate = normalizedPrivacyText(value);
   if (candidate === '') return;
 
-  const fileDriveOrUncPattern = /(?:file:\/\/\/|(?<![A-Za-z0-9])[A-Za-z]:[\\/]|\\\\[^\\/\s]+[\\/][^\\/\s]+)/i;
+  const fileUriPattern = /(?<![A-Za-z0-9+.-])file:[\\/]+/i;
+  const driveOrUncPattern = /(?:(?<![A-Za-z0-9])[A-Za-z]:[\\/]|\\\\[^\\/\s]+[\\/][^\\/\s]+)/i;
   const posixLocalRootPattern = /(?<![A-Za-z0-9._~-])\/(?:Users|home|tmp|var|private|mnt|rds|workspace)(?:[\\/]|$)/i;
-  assert.doesNotMatch(candidate, fileDriveOrUncPattern, `${context} must exclude absolute local paths`);
+  assert.doesNotMatch(candidate, fileUriPattern, `${context} must exclude absolute file URIs`);
+  assert.doesNotMatch(candidate, driveOrUncPattern, `${context} must exclude absolute local paths`);
 
   const webUrl = externalWebUrl(candidate);
   if (webUrl) {
@@ -417,24 +525,30 @@ test('raw and decoded generated output exclude private identifiers, unsupported 
     /\bpublished\b/i,
   ];
   for (const { route, raw, $ } of await generatedDocuments()) {
-    const decodedText = decodedTextValues($);
+    const decodedContexts = decodedTextContexts($);
     const decodedAttributes = decodedAttributeValues($);
-    const decodedDocumentAndAttributes = normalizedPrivacyText([
-      ...decodedText,
-      ...decodedAttributes,
-    ].join('\n'));
 
     for (const pattern of forbiddenPatterns) {
       assert.doesNotMatch(raw, pattern, `${route} raw HTML must exclude ${pattern}`);
-      assert.doesNotMatch(
-        decodedDocumentAndAttributes,
-        pattern,
-        `${route} decoded document text and attributes must exclude ${pattern}`,
-      );
+
+      decodedContexts.forEach((value, index) => {
+        assert.doesNotMatch(
+          value,
+          pattern,
+          `${route} decoded text context ${index + 1} must exclude ${pattern}`,
+        );
+      });
+      decodedAttributes.forEach((value, index) => {
+        assert.doesNotMatch(
+          normalizedPrivacyText(value),
+          pattern,
+          `${route} decoded attribute ${index + 1} must exclude ${pattern}`,
+        );
+      });
     }
 
-    decodedText.forEach((value, index) => {
-      assertNoAbsoluteLocalPath(value, `${route} decoded text node ${index + 1}`);
+    decodedContexts.forEach((value, index) => {
+      assertNoAbsoluteLocalPath(value, `${route} decoded text context ${index + 1}`);
     });
     decodedAttributes.forEach((value, index) => {
       assertNoAbsoluteLocalPath(value, `${route} decoded attribute ${index + 1}`);
