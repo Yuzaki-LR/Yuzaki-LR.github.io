@@ -19,10 +19,25 @@ function mainContent(html) {
   return match[1];
 }
 
+function openingTagAttributes(element, tagName) {
+  const match = element.match(new RegExp(`^<${escapeRegex(tagName)}\\b([^>]*)>`));
+  assert.ok(match, `expected an opening ${tagName} tag`);
+  return match[1];
+}
+
+function attributeValue(attributes, name) {
+  return attributes.match(new RegExp(`(?:^|\\s)${escapeRegex(name)}="([^"]*)"`))?.[1];
+}
+
 function primaryNav(html) {
-  const navs = [...html.matchAll(/<nav\b(?=[^>]*aria-label="Primary")[^>]*>[\s\S]*?<\/nav>/g)];
-  assert.equal(navs.length, 1, 'expected exactly one primary navigation element');
-  return navs[0][0];
+  const navs = [...html.matchAll(/<nav\b[^>]*>[\s\S]*?<\/nav>/g)].map((match) => ({
+    element: match[0],
+    attributes: openingTagAttributes(match[0], 'nav'),
+  }));
+  const primary = navs.filter(({ attributes }) => attributeValue(attributes, 'aria-label') === 'Primary');
+
+  assert.equal(primary.length, 1, 'expected exactly one primary navigation element');
+  return primary[0].element;
 }
 
 function anchors(html) {
@@ -30,10 +45,6 @@ function anchors(html) {
     attributes: match[1],
     text: match[2],
   }));
-}
-
-function attributeValue(attributes, name) {
-  return attributes.match(new RegExp(`\\b${escapeRegex(name)}="([^"]*)"`))?.[1];
 }
 
 function assertActiveResearchNav(html) {
@@ -55,9 +66,16 @@ function sectionContent(main, heading) {
 }
 
 function interestList(section) {
-  const lists = [...section.matchAll(/<ul\b[^>]*class="[^"]*\binterest-list\b[^"]*"[^>]*>([\s\S]*?)<\/ul>/g)];
-  assert.equal(lists.length, 1, 'expected exactly one interest list');
-  return lists[0][1];
+  const lists = [...section.matchAll(/<ul\b[^>]*>([\s\S]*?)<\/ul>/g)].map((match) => ({
+    attributes: openingTagAttributes(match[0], 'ul'),
+    content: match[1],
+  }));
+  const interestLists = lists.filter(({ attributes }) =>
+    (attributeValue(attributes, 'class') ?? '').split(/\s+/).includes('interest-list'),
+  );
+
+  assert.equal(interestLists.length, 1, 'expected exactly one interest list');
+  return interestLists[0].content;
 }
 
 function listItems(list) {
