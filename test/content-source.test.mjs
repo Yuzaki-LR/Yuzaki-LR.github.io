@@ -56,9 +56,19 @@ const projectSections = [
   'reflection',
 ];
 
+const approvedEvidenceSource = /^\/assets\/projects\/[a-z0-9]+(?:-[a-z0-9]+)*\.png$/;
+
 async function readRecord(collection, file) {
   const source = await readFile(path.join(projectRoot, 'src', 'content', collection, file), 'utf8');
   return matter(source);
+}
+
+function privacyScanRecord({ data, content }) {
+  const { evidence = [], ...remainingData } = data;
+  const remainingEvidence = evidence.map(({ src, ...entry }) => (
+    approvedEvidenceSource.test(src) ? entry : { ...entry, src }
+  ));
+  return JSON.stringify({ data: { ...remainingData, evidence: remainingEvidence }, content });
 }
 
 test('project records expose approved roles, six structured sections, and verified results', async () => {
@@ -69,7 +79,7 @@ test('project records expose approved roles, six structured sections, and verifi
     assert.ok(projectSections.every((section) => Array.isArray(data[section]) && data[section].length > 0));
     project.assertions(data);
     assert.ok(data.evidence.every(({ src, alt, caption }) => (
-      src.startsWith('/assets/projects/') && alt.length >= 20 && caption.length >= 20
+      approvedEvidenceSource.test(src) && alt.length >= 20 && caption.length >= 20
     )));
   }
 });
@@ -91,9 +101,12 @@ test('parsed frontmatter and Markdown body exclude sensitive source-document dat
     ...projectCases.map(({ file }) => readRecord('projects', file)),
     readRecord('research', 'more-electric-aircraft.md'),
   ]);
-  const publishedRecord = JSON.stringify(records.map(({ data, content }) => ({ data, content })));
+  const publishedRecord = records.map(privacyScanRecord).join('\n');
   assert.doesNotMatch(publishedRecord, /2775688|OneDrive|IDP2 Assignment|student number/i);
   assert.doesNotMatch(publishedRecord, /Zhigang Zeng|Cheng Yan|Junyu Wang|Jie Li/i);
-  assert.doesNotMatch(publishedRecord, /(?:[A-Z]:[\\/]|\\\\[^\\/\s]+[\\/]|(?:^|[\s"'(])\.\.?\\|file:\/\/)/i);
+  assert.doesNotMatch(
+    publishedRecord,
+    /(?:[A-Z]:[\\/]|\\\\[^\\/\s]+[\\/]|(?:^|[\s"'(])(?:\.\.?[\\/]|~[\\/]|\/(?:home|Users)\/)|file:\/\/)/i,
+  );
   assert.doesNotMatch(publishedRecord, /\.pdf(?:\b|[?#])/i);
 });
