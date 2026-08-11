@@ -14,6 +14,6 @@ const projects = (await getCollection('projects')).sort((a, b) => a.data.order -
   <h1>Projects</h1>
   <p class="lead">Selected work in systems engineering, power and control simulation, and communication-system analysis.</p>
   <div class="project-list">
-    {projects.map((project) => <ProjectListItem project={project} />)}
+    {projects.map((project) => <ProjectListItem project={project} headingLevel="h2" />)}
   </div>
 </BaseLayout>

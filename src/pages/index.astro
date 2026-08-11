@@ -20,7 +20,7 @@ const projects = (await getCollection('projects'))
   <section>
     <h2>Selected Projects</h2>
     <div class="project-list">
-      {projects.map((project) => <ProjectListItem project={project} />)}
+      {projects.map((project) => <ProjectListItem project={project} headingLevel="h3" />)}
     </div>
   </section>
 

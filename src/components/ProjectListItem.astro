@@ -3,14 +3,16 @@ import type { CollectionEntry } from 'astro:content';
 
 interface Props {
   project: CollectionEntry<'projects'>;
+  headingLevel: 'h2' | 'h3';
 }
 
-const { project } = Astro.props;
+const { project, headingLevel } = Astro.props;
+const Heading = headingLevel;
 ---
 
 <article class="project-row">
   <div>
-    <h3><a href={`/projects/${project.id}/`}>{project.data.title}</a></h3>
+    <Heading><a href={`/projects/${project.id}/`}>{project.data.title}</a></Heading>
     <p>{project.data.summary}</p>
   </div>
   <dl class="project-meta">
