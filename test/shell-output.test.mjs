@@ -12,6 +12,7 @@ test('homepage renders the approved academic shell', async () => {
   assert.match(html, /University of Birmingham/);
   assert.match(html, /mailto:yxw1331@student\.bham\.ac\.uk/);
   assert.match(html, />About<.*>Projects<.*>Research</s);
+  assert.match(html, /(?:©|&copy;)\s+\d{4}\s+Yunxi Wu/);
   assert.doesNotMatch(html, /\bCV\b/i);
 });
 
