@@ -32,7 +32,7 @@ const research = defineCollection({
   loader: glob({ pattern: '**/*.md', base: './src/content/research' }),
   schema: z.object({
     title: z.string(),
-    status: z.literal('Submitted manuscript – Under editorial review'),
+    status: z.literal('Submitted manuscript \u2014 Under editorial review'),
     authorship: z.literal('First-author review manuscript'),
     summary: z.string(),
     scope: z.array(z.string()).min(3),

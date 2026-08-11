@@ -90,7 +90,8 @@ test('manuscript record exposes the exact title and editorial status', async () 
     data.title,
     'Progress on More Electric Aircraft Power Systems at High Energy Density and Carbon Emission: Challenges and Opportunities',
   );
-  assert.equal(data.status, 'Submitted manuscript – Under editorial review');
+  assert.equal(data.status, 'Submitted manuscript \u2014 Under editorial review');
+  assert.notEqual(data.status, 'Submitted manuscript \u2013 Under editorial review');
   assert.equal(data.authorship, 'First-author review manuscript');
   assert.equal(data.scope.length, 3);
   assert.doesNotMatch(JSON.stringify(data), /under peer review|accepted|in press|published/i);

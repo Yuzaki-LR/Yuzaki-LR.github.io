@@ -1,6 +1,6 @@
 ---
 title: "Progress on More Electric Aircraft Power Systems at High Energy Density and Carbon Emission: Challenges and Opportunities"
-status: "Submitted manuscript – Under editorial review"
+status: "Submitted manuscript — Under editorial review"
 authorship: "First-author review manuscript"
 summary: "A review of technologies, architectures, integration constraints, and representative cases in more-electric aircraft power systems."
 scope:
