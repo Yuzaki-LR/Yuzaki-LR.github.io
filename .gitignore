@@ -5,3 +5,5 @@ dist/
 .astro/
 .DS_Store
 Thumbs.db
+tmp/
+.pnpm-store/
