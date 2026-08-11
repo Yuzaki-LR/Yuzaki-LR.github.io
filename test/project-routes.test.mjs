@@ -106,9 +106,8 @@ test('project summaries use a readable middle dot between methods and tools', as
     assert.equal(values.length, 1, `${route} must have exactly one associated tools value`);
     assert.equal(labels.first().next('dd').length, 1, `${route} tools value must follow its label`);
 
-    const text = values.text().replace(/\s+/g, ' ').trim();
-    assert.equal(text, expectedTools[route]);
-    assert.doesNotMatch(text, /\u8def/, `${route} must not render U+8DEF as a separator`);
+    assert.equal(values.text(), expectedTools[route]);
+    assert.doesNotMatch(values.text(), /\u8def/, `${route} must not render U+8DEF as a separator`);
   }
 });
 
