@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readdir } from 'node:fs/promises';
 import path from 'node:path';
+import { load } from 'cheerio';
 import { distRoot, readDist } from './helpers.mjs';
 
 const projectIds = [
@@ -75,6 +76,39 @@ test('project pages preserve the approved evidence-section heading order', async
     const headings = headingElements(mainContent(await readDist(route)));
     assert.equal(headings[0].level, 1, `${route} must begin its main content with an h1`);
     assert.deepEqual(headings.slice(1), sectionHeadings.map((text) => ({ level: 2, text })));
+  }
+});
+
+test('project summaries use a readable middle dot between methods and tools', async () => {
+  const expectedTools = {
+    'projects/communication-system-modelling/index.html':
+      'MATLAB · Signal processing · BER and MSE analysis',
+    'projects/future-ocean-habitat/index.html':
+      'Systems engineering · Requirements analysis · Concept design',
+    'projects/life-support-system/index.html':
+      'MATLAB Simulink · Simscape · Closed-loop control',
+  };
+
+  for (const route of routes) {
+    const $ = load(await readDist(route));
+    const main = $('main#main-content');
+    assert.equal(main.length, 1, `${route} must have exactly one main#main-content`);
+
+    const summary = main.find('dl.project-summary');
+    assert.equal(summary.length, 1, `${route} must have exactly one project summary`);
+
+    const labels = summary.find('dt').filter((_, element) =>
+      $(element).text().replace(/\s+/g, ' ').trim() === 'Methods and tools');
+    assert.equal(labels.length, 1, `${route} must have exactly one Methods and tools label`);
+
+    const row = labels.first().parent();
+    const values = row.children('dd');
+    assert.equal(values.length, 1, `${route} must have exactly one associated tools value`);
+    assert.equal(labels.first().next('dd').length, 1, `${route} tools value must follow its label`);
+
+    const text = values.text().replace(/\s+/g, ' ').trim();
+    assert.equal(text, expectedTools[route]);
+    assert.doesNotMatch(text, /\u8def/, `${route} must not render U+8DEF as a separator`);
   }
 });
 

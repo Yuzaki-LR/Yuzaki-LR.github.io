@@ -31,7 +31,7 @@ const data = project.data;
 
   <dl class="project-summary">
     <div><dt>Role</dt><dd>{data.role}</dd></div>
-    <div><dt>Methods and tools</dt><dd>{data.tools.join(' 路 ')}</dd></div>
+    <div><dt>Methods and tools</dt><dd>{data.tools.join(' · ')}</dd></div>
   </dl>
 
   <section><h2>Overview</h2>{data.overview.map((paragraph) => <p>{paragraph}</p>)}</section>
