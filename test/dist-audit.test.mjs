@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { readFile, readdir, realpath, stat } from 'node:fs/promises';
+import { lstat, readFile, readdir, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load } from 'cheerio';
@@ -44,15 +44,35 @@ function normalizedText(value) {
     .replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/g, '');
 }
 
+function htmlAsciiTrim(value) {
+  return value.replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/g, '');
+}
+
+function asciiCaseFold(value) {
+  return value.replace(/[A-Z]/g, (character) => character.toLowerCase());
+}
+
+function hidesContent(node) {
+  const tagName = (node.tagName ?? '').toLowerCase();
+  if (['script', 'style', 'template'].includes(tagName)) return true;
+
+  const attributes = node.attribs ?? {};
+  if (Object.hasOwn(attributes, 'hidden')) return true;
+  if (!Object.hasOwn(attributes, 'aria-hidden')) return false;
+  return asciiCaseFold(htmlAsciiTrim(attributes['aria-hidden'])) === 'true';
+}
+
 function classTokens(element) {
   const value = element.attr('class') ?? '';
   return value.split(/[\t\n\f\r ]+/).filter((token) => token !== '');
 }
 
 function visibleText(element) {
-  if (element.is('script,style,template,[hidden],[aria-hidden="true"]')) return '';
+  const selectedAndAncestors = [...element.toArray(), ...element.parents().toArray()];
+  if (selectedAndAncestors.some((node) => hidesContent(node))) return '';
+
   const clone = element.clone();
-  clone.find('script,style,template,[hidden],[aria-hidden="true"]').remove();
+  clone.find('*').filter((_, node) => hidesContent(node)).remove();
   return normalizedText(clone.text());
 }
 
@@ -60,24 +80,102 @@ function decodedAttributeValues($) {
   return $('*').toArray().flatMap((element) => Object.values(element.attribs ?? {}));
 }
 
+function decodedTextValues($) {
+  const values = [];
+
+  function visit(node) {
+    if (node.type === 'text') values.push(node.data ?? '');
+    for (const child of node.children ?? []) visit(child);
+  }
+
+  visit($.root()[0]);
+  return values;
+}
+
+function normalizedPrivacyText(value) {
+  return value.normalize('NFKC').replace(/[\s\p{Z}]+/gu, ' ').trim();
+}
+
+function externalWebUrl(value) {
+  const candidate = normalizedPrivacyText(value);
+  if (candidate === '' || /[\s\p{Z}]/u.test(candidate)) return null;
+
+  try {
+    const url = new URL(candidate);
+    return /^(?:http|https):$/i.test(url.protocol) && url.hostname !== '' ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+function assertNoAbsoluteLocalPath(value, context) {
+  const candidate = normalizedPrivacyText(value);
+  if (candidate === '') return;
+
+  const fileDriveOrUncPattern = /(?:file:\/\/\/|(?<![A-Za-z0-9])[A-Za-z]:[\\/]|\\\\[^\\/\s]+[\\/][^\\/\s]+)/i;
+  const posixLocalRootPattern = /(?<![A-Za-z0-9._~-])\/(?:Users|home|tmp|var|private|mnt|rds|workspace)(?:[\\/]|$)/i;
+  assert.doesNotMatch(candidate, fileDriveOrUncPattern, `${context} must exclude absolute local paths`);
+
+  const webUrl = externalWebUrl(candidate);
+  if (webUrl) {
+    assert.doesNotMatch(
+      `${webUrl.search}\n${webUrl.hash}`,
+      posixLocalRootPattern,
+      `${context} must not hide a separate local path outside its web pathname`,
+    );
+    return;
+  }
+
+  assert.doesNotMatch(candidate, posixLocalRootPattern, `${context} must exclude absolute local paths`);
+}
+
 function exactlyOne(elements, description) {
   assert.equal(elements.length, 1, `expected exactly one ${description}, found ${elements.length}`);
   return elements.eq(0);
 }
 
-async function recursiveHtmlFiles(directory, prefix = '') {
+function filesystemIdentity(canonicalPath) {
+  return process.platform === 'win32' ? canonicalPath.toLowerCase() : canonicalPath;
+}
+
+async function recursiveHtmlFiles(directory, prefix = '', state = null) {
+  const canonicalRoot = state?.canonicalRoot ?? await realpath(distRoot);
+  const visitedDirectories = state?.visitedDirectories ?? new Set();
+  const directoryContext = prefix === '' ? 'dist root' : `generated directory ${prefix}`;
+  const directoryInfo = await lstat(directory);
+  assert.ok(!directoryInfo.isSymbolicLink(), `${directoryContext} must not be a symlink or junction`);
+  assert.ok(directoryInfo.isDirectory(), `${directoryContext} must be a directory`);
+
+  const canonicalDirectory = await realpath(directory);
+  assertCanonicalContainment(canonicalRoot, canonicalDirectory, directoryContext);
+  const identity = filesystemIdentity(canonicalDirectory);
+  assert.ok(!visitedDirectories.has(identity), `${directoryContext} creates an inventory cycle`);
+  visitedDirectories.add(identity);
+
   const entries = await readdir(directory, { withFileTypes: true });
   const files = [];
 
   for (const entry of entries) {
     const relativePath = prefix === '' ? entry.name : `${prefix}/${entry.name}`;
-    if (entry.isDirectory()) {
-      files.push(...await recursiveHtmlFiles(path.join(directory, entry.name), relativePath));
-    } else if (
-      (entry.isFile() || entry.isSymbolicLink())
-      && path.extname(entry.name).toLowerCase() === '.html'
-    ) {
+    const absolutePath = path.join(directory, entry.name);
+    const entryInfo = await lstat(absolutePath);
+    assert.ok(
+      !entryInfo.isSymbolicLink(),
+      `generated output ${relativePath} must not be a symlink or junction`,
+    );
+
+    const canonicalEntry = await realpath(absolutePath);
+    assertCanonicalContainment(canonicalRoot, canonicalEntry, `generated output ${relativePath}`);
+
+    if (entryInfo.isDirectory()) {
+      files.push(...await recursiveHtmlFiles(absolutePath, relativePath, {
+        canonicalRoot,
+        visitedDirectories,
+      }));
+    } else if (entryInfo.isFile() && path.extname(entry.name).toLowerCase() === '.html') {
       files.push(relativePath);
+    } else {
+      assert.ok(entryInfo.isFile(), `generated output ${relativePath} must be a file or directory`);
     }
   }
 
@@ -88,12 +186,12 @@ async function generatedDocuments() {
   const documents = [];
 
   for (const route of await recursiveHtmlFiles(distRoot)) {
-    const filename = path.join(distRoot, ...route.split('/'));
-    assert.ok(existsSync(filename), `expected generated document ${route}`);
+    const candidate = path.join(distRoot, ...route.split('/'));
+    const filename = await canonicalExistingFile(candidate, `generated document ${route}`);
     const raw = await readFile(filename, 'utf8');
     documents.push({
       route,
-      filename: await canonicalExistingFile(filename, `generated document ${route}`),
+      filename,
       raw,
       $: load(raw, { sourceCodeLocationInfo: true }),
     });
@@ -120,8 +218,11 @@ function assertCanonicalContainment(canonicalRoot, canonicalTarget, context) {
 
 async function canonicalExistingFile(target, context) {
   assert.ok(existsSync(target), `${context} resolves to missing output`);
+  const targetInfo = await lstat(target);
+  assert.ok(!targetInfo.isSymbolicLink(), `${context} must not be a symlink or junction`);
   const [canonicalRoot, canonicalTarget] = await Promise.all([realpath(distRoot), realpath(target)]);
   assertCanonicalContainment(canonicalRoot, canonicalTarget, context);
+  assert.ok(targetInfo.isFile(), `${context} must be a file`);
   assert.ok((await stat(canonicalTarget)).isFile(), `${context} must resolve to a file`);
   return canonicalTarget;
 }
@@ -315,28 +416,29 @@ test('raw and decoded generated output exclude private identifiers, unsupported 
     /\bin press\b/i,
     /\bpublished\b/i,
   ];
-  const localPathPattern = /(?:file:\/\/\/|[A-Za-z]:[\\/]|\\\\[^\\/\s]+[\\/][^\\/\s]+|\/(?:Users|home|tmp|var|private|mnt|rds|workspace)(?:[\\/]))/i;
-
   for (const { route, raw, $ } of await generatedDocuments()) {
-    const decodedVisibleAndAttributes = [
-      visibleText(exactlyOne($('body'), `${route} body for decoded privacy scan`)),
-      ...decodedAttributeValues($),
-    ].join('\n');
+    const decodedText = decodedTextValues($);
+    const decodedAttributes = decodedAttributeValues($);
+    const decodedDocumentAndAttributes = normalizedPrivacyText([
+      ...decodedText,
+      ...decodedAttributes,
+    ].join('\n'));
 
     for (const pattern of forbiddenPatterns) {
       assert.doesNotMatch(raw, pattern, `${route} raw HTML must exclude ${pattern}`);
       assert.doesNotMatch(
-        decodedVisibleAndAttributes,
+        decodedDocumentAndAttributes,
         pattern,
-        `${route} decoded visible text and attributes must exclude ${pattern}`,
+        `${route} decoded document text and attributes must exclude ${pattern}`,
       );
     }
-    assert.doesNotMatch(raw, localPathPattern, `${route} raw HTML must exclude absolute local paths`);
-    assert.doesNotMatch(
-      decodedVisibleAndAttributes,
-      localPathPattern,
-      `${route} decoded visible text and attributes must exclude absolute local paths`,
-    );
+
+    decodedText.forEach((value, index) => {
+      assertNoAbsoluteLocalPath(value, `${route} decoded text node ${index + 1}`);
+    });
+    decodedAttributes.forEach((value, index) => {
+      assertNoAbsoluteLocalPath(value, `${route} decoded attribute ${index + 1}`);
+    });
   }
 });
 
