@@ -1,5 +1,6 @@
 ---
 import { getCollection } from 'astro:content';
+import ManuscriptEntry from '../components/ManuscriptEntry.astro';
 import ProjectListItem from '../components/ProjectListItem.astro';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { site } from '../data/site.mjs';
@@ -7,6 +8,7 @@ import { site } from '../data/site.mjs';
 const projects = (await getCollection('projects'))
   .filter((project) => project.data.featured)
   .sort((a, b) => a.data.order - b.data.order);
+const manuscripts = (await getCollection('research')).sort((a, b) => a.data.order - b.data.order);
 ---
 
 <BaseLayout
@@ -22,6 +24,11 @@ const projects = (await getCollection('projects'))
     <div class="project-list">
       {projects.map((project) => <ProjectListItem project={project} headingLevel="h3" />)}
     </div>
+  </section>
+
+  <section>
+    <h2>Research &amp; Manuscripts</h2>
+    {manuscripts.map((entry) => <ManuscriptEntry entry={entry} />)}
   </section>
 
   <div class="notice">

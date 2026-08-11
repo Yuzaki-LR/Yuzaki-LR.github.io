@@ -19,7 +19,7 @@ function mainContent(html) {
 }
 
 function headingElements(html) {
-  return [...mainContent(html).matchAll(/<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/g)].map((match) => ({
+  return [...html.matchAll(/<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/g)].map((match) => ({
     level: Number(match[1]),
     text: match[2],
   }));
@@ -46,15 +46,19 @@ test('projects index and exactly the approved detail routes are generated', asyn
 });
 
 test('project lists use a semantic heading hierarchy', async () => {
-  const projectsIndexHeadings = headingElements(await readDist('projects/index.html'));
+  const projectsIndexHeadings = headingElements(mainContent(await readDist('projects/index.html')));
   assert.deepEqual(projectsIndexHeadings.map(({ level }) => level), [1, 2, 2, 2]);
   assert.match(projectsIndexHeadings[1].text, /Future Ocean Habitat/);
   assert.match(projectsIndexHeadings[2].text, /Life-Support System/);
   assert.match(projectsIndexHeadings[3].text, /Communication-System Modelling/);
 
-  const homepageHeadings = headingElements(await readDist('index.html'));
-  assert.deepEqual(homepageHeadings.map(({ level }) => level), [1, 2, 3, 3, 3]);
-  assert.equal(homepageHeadings[1].text, 'Selected Projects');
+  const selectedProjects = headingElements(
+    sectionContent(await readDist('index.html'), 'Selected Projects'),
+  );
+  assert.deepEqual(selectedProjects.map(({ level }) => level), [3, 3, 3]);
+  assert.match(selectedProjects[0].text, /Future Ocean Habitat/);
+  assert.match(selectedProjects[1].text, /Life-Support System/);
+  assert.match(selectedProjects[2].text, /Communication-System Modelling/);
 });
 
 test('project pages preserve the approved evidence-section heading order', async () => {
@@ -68,7 +72,7 @@ test('project pages preserve the approved evidence-section heading order', async
   ];
 
   for (const route of routes) {
-    const headings = headingElements(await readDist(route));
+    const headings = headingElements(mainContent(await readDist(route)));
     assert.equal(headings[0].level, 1, `${route} must begin its main content with an h1`);
     assert.deepEqual(headings.slice(1), sectionHeadings.map((text) => ({ level: 2, text })));
   }
