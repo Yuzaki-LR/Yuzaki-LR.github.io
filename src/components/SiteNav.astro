@@ -1,0 +1,22 @@
+---
+import { site } from '../data/site.mjs';
+
+interface Props {
+  active?: 'About' | 'Projects' | 'Research';
+}
+
+const { active } = Astro.props;
+---
+
+<nav class="site-nav" aria-label="Primary">
+  <a class="site-name" href="/">{site.name}</a>
+  <ul>
+    {site.navigation.map((item) => (
+      <li>
+        <a href={item.href} aria-current={active === item.label ? 'page' : undefined}>
+          {item.label}
+        </a>
+      </li>
+    ))}
+  </ul>
+</nav>

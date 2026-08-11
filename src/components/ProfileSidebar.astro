@@ -1,0 +1,22 @@
+---
+import { site } from '../data/site.mjs';
+---
+
+<aside class="profile-sidebar" aria-label="Profile">
+  <div class="monogram" aria-hidden="true">YW</div>
+  <h2>{site.name}</h2>
+  <p class="profile-degree">{site.degree}</p>
+  <p class="profile-institution">{site.institution}</p>
+
+  <section class="sidebar-section" aria-labelledby="interests-heading">
+    <h3 id="interests-heading">Research Interests</h3>
+    <ul>
+      {site.interests.map((interest) => <li>{interest}</li>)}
+    </ul>
+  </section>
+
+  <section class="sidebar-section" aria-labelledby="contact-heading">
+    <h3 id="contact-heading">Contact</h3>
+    <a class="email-link" href={`mailto:${site.email}`}>{site.email}</a>
+  </section>
+</aside>

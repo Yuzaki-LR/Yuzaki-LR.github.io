@@ -1,0 +1,254 @@
+:root {
+  color-scheme: light;
+  --background: #ffffff;
+  --surface: #f7f8f9;
+  --text: #292d32;
+  --muted: #656c73;
+  --rule: #dfe2e6;
+  --accent: #2d587a;
+  --accent-soft: #edf2f5;
+  --content-width: 1040px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--background);
+  color: var(--text);
+  font-family: "Times New Roman", Times, serif;
+  line-height: 1.62;
+  scroll-behavior: auto;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: var(--background);
+  font-size: 17px;
+}
+
+a {
+  color: var(--accent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.16em;
+}
+
+a:hover {
+  text-decoration-thickness: 2px;
+}
+
+a:focus-visible,
+button:focus-visible,
+[tabindex]:focus-visible {
+  outline: 3px solid #8da9bd;
+  outline-offset: 3px;
+}
+
+.skip-link {
+  position: fixed;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 20;
+  padding: 0.55rem 0.8rem;
+  background: var(--text);
+  color: #fff;
+  transform: translateY(-180%);
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+.site-header {
+  border-bottom: 1px solid var(--rule);
+}
+
+.site-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: min(100% - 2rem, var(--content-width));
+  min-height: 68px;
+  margin: 0 auto;
+  font-family: Arial, "Helvetica Neue", sans-serif;
+  font-size: 0.82rem;
+}
+
+.site-name {
+  color: var(--text);
+  font-family: "Times New Roman", Times, serif;
+  font-size: 1.28rem;
+  text-decoration: none;
+}
+
+.site-nav ul {
+  display: flex;
+  gap: 1.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.site-nav a[aria-current="page"] {
+  color: var(--text);
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.page-shell {
+  display: grid;
+  grid-template-columns: 230px minmax(0, 1fr);
+  gap: 3rem;
+  width: min(100% - 2rem, var(--content-width));
+  margin: 0 auto;
+  padding: 3rem 0 4rem;
+}
+
+.profile-sidebar {
+  align-self: start;
+  padding-right: 2rem;
+  border-right: 1px solid var(--rule);
+  text-align: center;
+}
+
+.monogram {
+  display: grid;
+  place-items: center;
+  width: 112px;
+  height: 112px;
+  margin: 0 auto 1rem;
+  border-radius: 50%;
+  background: #e6e9ed;
+  color: #555e67;
+  font-size: 2rem;
+}
+
+.profile-sidebar h2 {
+  margin: 0;
+  font-size: 1.45rem;
+  font-weight: 400;
+}
+
+.profile-degree,
+.profile-institution {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.98rem;
+  line-height: 1.4;
+}
+
+.sidebar-section {
+  margin-top: 1.8rem;
+  text-align: left;
+}
+
+.sidebar-section h3 {
+  margin: 0 0 0.55rem;
+  padding-bottom: 0.38rem;
+  border-bottom: 1px solid var(--rule);
+  font-family: Arial, "Helvetica Neue", sans-serif;
+  font-size: 0.72rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.sidebar-section ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sidebar-section li {
+  margin: 0.35rem 0;
+}
+
+.email-link {
+  overflow-wrap: anywhere;
+}
+
+main {
+  min-width: 0;
+}
+
+main h1 {
+  margin: 0 0 1rem;
+  font-size: clamp(2rem, 4vw, 2.65rem);
+  font-weight: 400;
+  line-height: 1.12;
+}
+
+main h2 {
+  margin: 2.6rem 0 1rem;
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid #bfc5cb;
+  font-size: 1.55rem;
+  font-weight: 400;
+}
+
+main h3 {
+  font-size: 1.18rem;
+}
+
+.lead {
+  max-width: 760px;
+  margin: 0;
+  color: #4e545b;
+  font-size: 1.08rem;
+}
+
+.notice {
+  margin-top: 2rem;
+  padding: 1rem 1.1rem;
+  border-left: 3px solid #8a9dac;
+  background: var(--surface);
+}
+
+.site-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.1rem max(1rem, calc((100% - var(--content-width)) / 2));
+  border-top: 1px solid var(--rule);
+  background: #fafafa;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+@media (max-width: 760px) {
+  .site-nav {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.6rem;
+    padding: 1rem 0;
+  }
+
+  .site-nav ul {
+    width: 100%;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .page-shell {
+    grid-template-columns: 1fr;
+    gap: 2rem;
+    padding-top: 2rem;
+  }
+
+  .profile-sidebar {
+    padding: 0 0 2rem;
+    border-right: 0;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .sidebar-section {
+    max-width: 360px;
+    margin-right: auto;
+    margin-left: auto;
+  }
+
+  .site-footer {
+    flex-direction: column;
+  }
+}

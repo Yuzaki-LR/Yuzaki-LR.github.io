@@ -1,0 +1,17 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { site } from '../data/site.mjs';
+---
+
+<BaseLayout
+  title="Yunxi Wu | Electronic and Electrical Engineering"
+  description="Academic profile of Yunxi Wu, a BEng Electronic and Electrical Engineering student at the University of Birmingham."
+  activeNav="About"
+>
+  <h1>About</h1>
+  <p class="lead">{site.intro}</p>
+  <div class="notice">
+    <strong>Current direction</strong>
+    <p>{site.currentDirection}</p>
+  </div>
+</BaseLayout>
