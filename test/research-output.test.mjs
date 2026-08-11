@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { load } from 'cheerio';
 import { readDist } from './helpers.mjs';
 
 const manuscriptTitle = 'Progress on More Electric Aircraft Power Systems at High Energy Density and Carbon Emission: Challenges and Opportunities';
@@ -9,134 +10,143 @@ const currentDirection = 'I am currently developing projects and technical found
 const interests = ['Embodied AI', 'Computer Vision', 'Robotics'];
 const prohibitedStatus = /under peer review|accepted|in press|published/i;
 
-function escapeRegex(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function singleElement(elements, message) {
+  assert.equal(elements.length, 1, message);
+  return elements.first();
 }
 
-function mainContent(html) {
-  const match = html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/);
-  assert.ok(match, 'expected a main element');
-  return match[1];
+function elementsWithHtmlClass($, elements, className) {
+  return elements.filter((_, element) => {
+    const classAttribute = $(element).attr('class');
+    return classAttribute !== undefined
+      && classAttribute.split(/[\t\n\f\r ]+/).includes(className);
+  });
 }
 
-function openingTagAttributes(element, tagName) {
-  const match = element.match(new RegExp(`^<${escapeRegex(tagName)}\\b([^>]*)>`));
-  assert.ok(match, `expected an opening ${tagName} tag`);
-  return match[1];
+function mainContent($, page) {
+  return singleElement($('main'), `${page} should contain exactly one main element`);
 }
 
-function attributeValue(attributes, name) {
-  return attributes.match(new RegExp(`(?:^|\\s)${escapeRegex(name)}="([^"]*)"`))?.[1];
+function sectionContent($, main, heading, page) {
+  const sections = main.children('section').filter((_, element) => {
+    const directHeadings = $(element).children('h2');
+    return directHeadings.length === 1 && directHeadings.first().text() === heading;
+  });
+
+  return singleElement(sections, `${page} should contain exactly one ${heading} section`);
 }
 
-function primaryNav(html) {
-  const navs = [...html.matchAll(/<nav\b[^>]*>[\s\S]*?<\/nav>/g)].map((match) => ({
-    element: match[0],
-    attributes: openingTagAttributes(match[0], 'nav'),
-  }));
-  const primary = navs.filter(({ attributes }) => attributeValue(attributes, 'aria-label') === 'Primary');
-
-  assert.equal(primary.length, 1, 'expected exactly one primary navigation element');
-  return primary[0].element;
-}
-
-function anchors(html) {
-  return [...html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)].map((match) => ({
-    attributes: match[1],
-    text: match[2],
-  }));
-}
-
-function assertActiveResearchNav(html) {
-  const active = anchors(primaryNav(html)).filter(
-    ({ attributes }) => attributeValue(attributes, 'aria-current') === 'page',
+function assertActiveResearchNav($) {
+  const primaryNav = singleElement(
+    $('nav').filter((_, element) => $(element).attr('aria-label') === 'Primary'),
+    'expected exactly one primary navigation element',
+  );
+  const activeLinks = primaryNav.find('a').filter(
+    (_, element) => $(element).attr('aria-current') === 'page',
+  );
+  const activeResearch = singleElement(
+    activeLinks,
+    'primary navigation must have exactly one active link',
   );
 
-  assert.equal(active.length, 1, 'primary navigation must have exactly one active link');
-  assert.equal(attributeValue(active[0].attributes, 'href'), '/research/');
-  assert.equal(active[0].text, 'Research');
+  assert.equal(activeResearch.attr('href'), '/research/');
+  assert.equal(activeResearch.text(), 'Research');
 }
 
-function sectionContent(main, heading) {
-  const match = main.match(
-    new RegExp(`<section\\b[^>]*>\\s*<h2\\b[^>]*>${escapeRegex(heading)}<\\/h2>([\\s\\S]*?)<\\/section>`),
-  );
-  assert.ok(match, `expected a ${heading} section`);
-  return match[1];
-}
-
-function interestList(section) {
-  const lists = [...section.matchAll(/<ul\b[^>]*>([\s\S]*?)<\/ul>/g)].map((match) => ({
-    attributes: openingTagAttributes(match[0], 'ul'),
-    content: match[1],
-  }));
-  const interestLists = lists.filter(({ attributes }) =>
-    (attributeValue(attributes, 'class') ?? '').split(/\s+/).includes('interest-list'),
-  );
-
-  assert.equal(interestLists.length, 1, 'expected exactly one interest list');
-  return interestLists[0].content;
-}
-
-function listItems(list) {
-  return [...list.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map((match) => match[1]);
-}
-
-function headingElements(html) {
-  return [...html.matchAll(/<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/g)].map((match) => ({
-    level: Number(match[1]),
-    text: match[2],
+function headingElements($, main) {
+  return main.find('h1, h2, h3, h4, h5, h6').toArray().map((element) => ({
+    level: Number($(element).prop('tagName').slice(1)),
+    text: $(element).text(),
   }));
 }
 
-function manuscriptArticle(section, page) {
-  const articles = [...section.matchAll(/<article\b[^>]*class="[^"]*\bmanuscript-entry\b[^"]*"[^>]*>[\s\S]*?<\/article>/g)];
-  assert.equal(articles.length, 1, `${page} should contain exactly one manuscript entry`);
-  return articles[0][0];
+function interestListItems($, section) {
+  const list = singleElement(
+    elementsWithHtmlClass($, section.find('ul'), 'interest-list'),
+    'expected exactly one interest list',
+  );
+
+  return list.children('li').toArray().map((element) => $(element).text());
 }
 
-function assertManuscriptArticle(article, page) {
-  assert.match(article, new RegExp(`<p class="manuscript-status">${escapeRegex(exactStatus)}<\\/p>`));
-  assert.match(article, new RegExp(`<h3\\b[^>]*>${escapeRegex(manuscriptTitle)}<\\/h3>`));
-  assert.match(article, new RegExp(`<strong>${escapeRegex(authorship)}\\.<\\/strong>`));
-  assert.doesNotMatch(article, prohibitedStatus, `${page} manuscript entry must not claim a prohibited status`);
+function manuscriptArticle($, section, page) {
+  return singleElement(
+    elementsWithHtmlClass($, section.children('article'), 'manuscript-entry'),
+    `${page} should contain exactly one manuscript entry`,
+  );
 }
 
-function assertNoPublicationsHeading(main, page) {
+function assertManuscriptArticle($, article, page) {
+  const status = singleElement(
+    elementsWithHtmlClass($, article.children('p'), 'manuscript-status'),
+    `${page} manuscript entry should contain exactly one status`,
+  );
+  const title = singleElement(
+    article.children('h3'),
+    `${page} manuscript entry should contain exactly one title`,
+  );
+  const authorshipText = singleElement(
+    article.find('strong'),
+    `${page} manuscript entry should contain exactly one authorship statement`,
+  );
+
+  assert.equal(status.text(), exactStatus);
+  assert.equal(title.text(), manuscriptTitle);
+  assert.equal(authorshipText.text(), `${authorship}.`);
   assert.doesNotMatch(
-    main,
-    /<h[1-6][^>]*>\s*Publications\s*<\/h[1-6]>/i,
-    `${page} must not include a Publications heading`,
+    article.text(),
+    prohibitedStatus,
+    `${page} manuscript entry must not claim a prohibited status`,
   );
+}
+
+function assertNoPublicationsHeading($, main, page) {
+  const publicationsHeadings = main.find('h1, h2, h3, h4, h5, h6').filter(
+    (_, element) => $(element).text().trim().toLowerCase() === 'publications',
+  );
+  assert.equal(publicationsHeadings.length, 0, `${page} must not include a Publications heading`);
 }
 
 test('research page has separate semantic interest, ongoing-work, and manuscript sections', async () => {
-  const html = await readDist('research/index.html');
-  const main = mainContent(html);
-  const researchInterests = sectionContent(main, 'Research Interests');
-  const ongoingWork = sectionContent(main, 'Ongoing Work');
-  const researchManuscripts = sectionContent(main, 'Research &amp; Manuscripts');
+  const $ = load(await readDist('research/index.html'));
+  const main = mainContent($, 'Research page');
+  const researchInterests = sectionContent($, main, 'Research Interests', 'Research page');
+  const ongoingWork = sectionContent($, main, 'Ongoing Work', 'Research page');
+  const researchManuscripts = sectionContent($, main, 'Research & Manuscripts', 'Research page');
 
-  assertActiveResearchNav(html);
-  assert.deepEqual(headingElements(main), [
+  assertActiveResearchNav($);
+  assert.deepEqual(headingElements($, main), [
     { level: 1, text: 'Research' },
     { level: 2, text: 'Research Interests' },
     { level: 2, text: 'Ongoing Work' },
-    { level: 2, text: 'Research &amp; Manuscripts' },
+    { level: 2, text: 'Research & Manuscripts' },
     { level: 3, text: manuscriptTitle },
   ]);
-  assert.deepEqual(listItems(interestList(researchInterests)), interests);
-  assert.ok(ongoingWork.includes(currentDirection));
-  assertManuscriptArticle(manuscriptArticle(researchManuscripts, 'Research page'), 'Research page');
-  assertNoPublicationsHeading(main, 'Research page');
+  assert.deepEqual(interestListItems($, researchInterests), interests);
+  assert.equal(
+    singleElement(
+      ongoingWork.children('p'),
+      'Research page Ongoing Work should contain exactly one paragraph',
+    ).text(),
+    currentDirection,
+  );
+  assertManuscriptArticle(
+    $,
+    manuscriptArticle($, researchManuscripts, 'Research page'),
+    'Research page',
+  );
+  assertNoPublicationsHeading($, main, 'Research page');
 });
 
 test('homepage renders the exact manuscript article without a Publications heading', async () => {
-  const html = await readDist('index.html');
-  const main = mainContent(html);
-  const researchManuscripts = sectionContent(main, 'Research &amp; Manuscripts');
+  const $ = load(await readDist('index.html'));
+  const main = mainContent($, 'Homepage');
+  const researchManuscripts = sectionContent($, main, 'Research & Manuscripts', 'Homepage');
 
-  assert.match(researchManuscripts, new RegExp(`<h3\\b[^>]*>${escapeRegex(manuscriptTitle)}<\\/h3>`));
-  assertManuscriptArticle(manuscriptArticle(researchManuscripts, 'Homepage'), 'Homepage');
-  assertNoPublicationsHeading(main, 'Homepage');
+  assertManuscriptArticle(
+    $,
+    manuscriptArticle($, researchManuscripts, 'Homepage'),
+    'Homepage',
+  );
+  assertNoPublicationsHeading($, main, 'Homepage');
 });
