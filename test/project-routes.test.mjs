@@ -100,4 +100,8 @@ test('project pages expose verified contribution and result boundaries', async (
   assert.match(communicationResults, /lowest reported MSE of 4\.04 [^0-9]+ 10\^-2/);
   assert.match(communicationResults, /tested filters and parameter ranges/);
   assert.match(communicationResults, /simulated signal, noise conditions, parameter ranges, and evaluation method/);
+  assert.doesNotMatch(
+    communicationResults,
+    /\b(?:experimentally|experimental|measured|physical-system|physical system|real-world|real world|operational|hardware|field[- ]tested)\b/i,
+  );
 });

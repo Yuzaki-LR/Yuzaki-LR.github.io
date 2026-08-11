@@ -280,6 +280,7 @@ main h3 {
   border-bottom: 1px solid var(--rule);
 }
 
+.project-row h2,
 .project-row h3,
 .project-row p {
   margin: 0;

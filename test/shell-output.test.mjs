@@ -23,3 +23,8 @@ test('built CSS uses the approved restrained typography', async () => {
   assert.match(css, /#2d587a/i);
   assert.doesNotMatch(css, /linear-gradient|radial-gradient|@keyframes/i);
 });
+
+test('built CSS gives project-row h2 and h3 titles the same reset', async () => {
+  const css = await readBuiltCss();
+  assert.match(css, /\.project-row h2,\.project-row h3,\.project-row p\{margin:0\}/);
+});
