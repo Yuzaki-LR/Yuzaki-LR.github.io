@@ -11,14 +11,22 @@
     "dev": "astro dev",
     "check": "astro check",
     "build": "astro build",
-    "test": "astro check && astro build && node --test test/*.test.mjs"
+    "editor": "node editor/server/main.mjs",
+    "test:unit": "node --test test/*.test.mjs editor/test/*.test.mjs",
+    "test": "astro check && astro build && node --test test/*.test.mjs editor/test/*.test.mjs"
   },
   "devDependencies": {
     "@astrojs/check": "0.9.10",
     "astro": "7.2.0",
     "cheerio": "1.2.0",
     "gray-matter": "4.0.3",
+    "remark-gfm": "4.0.1",
+    "remark-parse": "11.0.0",
+    "remark-stringify": "11.0.0",
+    "sharp": "0.35.3",
     "typescript": "6.0.3",
-    "yaml": "2.9.0"
+    "unified": "11.0.5",
+    "yaml": "2.9.0",
+    "zod": "4.4.3"
   }
 }
