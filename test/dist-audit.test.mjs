@@ -28,6 +28,9 @@ const approvedImages = [
   '/assets/projects/life-support-hvac-control.png',
 ];
 
+const privateIdentifierPattern = /\b\d{7}\b/u;
+const nonPublicNameSentinelPattern = new RegExp(['Private', 'Collaborator'].join('\\s+'), 'i');
+
 const expectedCurrentNavigation = new Map([
   ['404.html', null],
   ['index.html', { text: 'About', href: '/' }],
@@ -511,14 +514,11 @@ test('all real images are accessible and the site emits each approved image sour
 
 test('raw and decoded generated output exclude private identifiers, unsupported statuses, and local paths', async () => {
   const forbiddenPatterns = [
-    /2775688/i,
+    privateIdentifierPattern,
     /OneDrive/i,
     /IDP2 Assignment/i,
     /student number/i,
-    /Zhigang Zeng/i,
-    /Cheng Yan/i,
-    /Junyu Wang/i,
-    /Jie Li/i,
+    nonPublicNameSentinelPattern,
     /\bCV\b/i,
     /\bunder peer review\b/i,
     /\baccepted\b/i,

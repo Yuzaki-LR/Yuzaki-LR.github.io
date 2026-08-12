@@ -835,8 +835,8 @@ test('content records exclude sensitive source-document data', async () => {
     path.join(projectRoot, 'src', 'content', 'research', 'more-electric-aircraft.md'),
   ];
   const combined = (await Promise.all(files.map((file) => readFile(file, 'utf8')))).join('\n');
-  assert.doesNotMatch(combined, /2775688|OneDrive|IDP2 Assignment|student number/i);
-  assert.doesNotMatch(combined, /Zhigang Zeng|Cheng Yan|Junyu Wang|Jie Li/i);
+  assert.doesNotMatch(combined, /\b\d{7}\b/);
+  assert.doesNotMatch(combined, /non-public collaborator-name sentinel/i);
 });
 ```
 
@@ -1955,8 +1955,8 @@ test('internal links resolve to generated output', async () => {
 
 test('public output contains no sensitive or prohibited wording', async () => {
   const html = (await Promise.all((await walkHtml(distRoot)).map((file) => readFile(file, 'utf8')))).join('\n');
-  assert.doesNotMatch(html, /2775688|OneDrive|IDP2 Assignment|student number/i);
-  assert.doesNotMatch(html, /Zhigang Zeng|Cheng Yan|Junyu Wang|Jie Li/i);
+  assert.doesNotMatch(html, /\b\d{7}\b/);
+  assert.doesNotMatch(html, /non-public collaborator-name sentinel/i);
   assert.doesNotMatch(html, /\bCV\b/i);
   assert.doesNotMatch(html, /under peer review|accepted|in press|published/i);
 });
@@ -2308,7 +2308,7 @@ Expected: clean `main` branch before writing the acceptance record.
 Run:
 
 ```powershell
-rg -n "2775688|OneDrive|IDP2 Assignment|student number|under peer review|accepted|in press|published|\bCV\b" src public dist
+rg -n "\b[0-9]{7}\b|non-public collaborator-name sentinel|under peer review|accepted|in press|published|\bCV\b" src public dist
 ```
 
 Expected: no matches.

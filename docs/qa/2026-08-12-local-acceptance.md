@@ -3,10 +3,10 @@
 - Frozen dependency installation: PASS
 - Astro and TypeScript check: PASS
 - Static production build: PASS — 7 pages
-- Full test suite: PASS — 35/35
+- Full test suite: PASS — 39/39
 - Expected route and internal-link audit: PASS
 - Semantic, heading, and image-alt audit: PASS
-- Sensitive-content and raw-artifact scan: PASS
+- Git-tracked repository, generated-output, and raw-artifact sensitive-content scans: PASS
 - Six evidence images and required numerical evidence reviewed: PASS
 - Responsive visual review at 375, 768, 1280, and 1920 px: PASS
 - GitHub Pages workflow/configuration audit: PASS

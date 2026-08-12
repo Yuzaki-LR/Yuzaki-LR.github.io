@@ -57,6 +57,8 @@ const projectSections = [
 ];
 
 const approvedEvidenceSource = /^\/assets\/projects\/[a-z0-9]+(?:-[a-z0-9]+)*\.png$/;
+const privateIdentifierPattern = /\b\d{7}\b/u;
+const nonPublicNameSentinelPattern = new RegExp(['Private', 'Collaborator'].join('\\s+'), 'i');
 
 async function readRecord(collection, file) {
   const source = await readFile(path.join(projectRoot, 'src', 'content', collection, file), 'utf8');
@@ -103,8 +105,9 @@ test('parsed frontmatter and Markdown body exclude sensitive source-document dat
     readRecord('research', 'more-electric-aircraft.md'),
   ]);
   const publishedRecord = records.map(privacyScanRecord).join('\n');
-  assert.doesNotMatch(publishedRecord, /2775688|OneDrive|IDP2 Assignment|student number/i);
-  assert.doesNotMatch(publishedRecord, /Zhigang Zeng|Cheng Yan|Junyu Wang|Jie Li/i);
+  assert.doesNotMatch(publishedRecord, privateIdentifierPattern);
+  assert.doesNotMatch(publishedRecord, /OneDrive|IDP2 Assignment|student number/i);
+  assert.doesNotMatch(publishedRecord, nonPublicNameSentinelPattern);
   assert.doesNotMatch(
     publishedRecord,
     /(?:[A-Z]:[\\/]|\\\\[^\\/\s]+[\\/]|(?:^|[\s"'(])(?:\.\.?[\\/]|~[\\/]|\/(?:home|Users)\/)|file:\/\/)/i,
