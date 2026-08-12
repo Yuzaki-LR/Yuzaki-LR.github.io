@@ -1,0 +1,20 @@
+name: Example Person
+degree: Example Degree
+institution: Example Institution
+email: example@example.test
+intro: Example profile.
+interests: []
+avatar:
+  mode: hidden
+links:
+  github: null
+  linkedin: null
+  googleScholar: null
+  orcid: null
+  custom: []
+theme:
+  background: '#ffffff'
+  surface: '#f7f8f9'
+  text: '#17212b'
+  accent: '#2d587a'
+navigation: []

@@ -15,17 +15,25 @@ const advancedBlock = z.object({ ...editorFields, type: z.literal('advanced'), r
 const blockSchema = z.discriminatedUnion('type', [markdownBlock('subheading'), markdownBlock('paragraph'), markdownBlock('list'), markdownBlock('table'), markdownBlock('image'), advancedBlock]);
 const sectionSchema = z.object({ id: z.string().regex(EDITOR_ID), kind: z.enum(['standard', 'contribution']), hidden: z.boolean(), title: z.string().min(1), blocks: z.array(blockSchema).min(1), pendingEditorIds: z.boolean().optional() }).strict();
 const researchSchema = z.object({ title: z.string().min(1), summary: z.string().min(1), order: z.number().int().nonnegative(), status: z.literal(MANUSCRIPT_STATUS).optional(), authorship: z.string().min(1).optional(), scope: z.array(z.string().min(1)).optional(), date: z.string().min(1).optional() }).strict();
-const themeSchema = z.object({ text: z.string().regex(hex), background: z.string().regex(hex), surface: z.string().regex(hex), accent: z.string().regex(hex), focus: z.string().regex(hex) }).strict();
+const themeSchema = z.object({ text: z.string().regex(hex), background: z.string().regex(hex), surface: z.string().regex(hex), accent: z.string().regex(hex), focus: z.string().regex(hex).optional() }).strict();
+const linkSchema = z.object({ label: z.string().min(1), href: z.string().regex(safeUrl) }).strict();
+const siteSchema = z.object({
+  name: z.string().min(1), degree: z.string().min(1).nullable().optional(), institution: z.string().min(1).nullable().optional(),
+  email: z.email().nullable().optional(), intro: z.string().min(1), interests: z.array(z.string().min(1)),
+  avatar: z.object({ mode: z.enum(['initials', 'hidden', 'image']), src: z.string().optional(), alt: z.string().min(1).optional() }).strict(),
+  links: z.object({ github: z.string().regex(safeUrl).nullable().optional(), linkedin: z.string().regex(safeUrl).nullable().optional(), googleScholar: z.string().regex(safeUrl).nullable().optional(), orcid: z.string().regex(safeUrl).nullable().optional(), custom: z.array(linkSchema).optional() }).strict(),
+  theme: themeSchema, navigation: z.array(z.object({ label: z.string().min(1), href: z.string().regex(/^\/(?:[a-z0-9-]+\/)*$/) }).strict()),
+}).strict();
 function fail(message) { throw new Error(message); }
 function checked(schema, value, message) { const result = schema.safeParse(value); if (!result.success) fail(message); return result.data; }
 function assertBlock(block) {
   checked(blockSchema, block, 'block contract is invalid');
   if (block.type === 'image') {
     const image = (block.markdown ?? '').match(/^!\[[^\]]*\]\(([^)]+)\)/m)?.[1];
-    if (!image || !safePath.test(image)) fail('image path must be a safe relative path');
+    if (!image || (!safePath.test(image) && !/^\.\/images\/[a-zA-Z0-9][a-zA-Z0-9_-]*\.png$/.test(image))) fail('image path must be a safe relative path');
   }
   for (const match of (block.markdown ?? '').matchAll(/\]\(([^)]+)\)/g)) {
-    if (!safePath.test(match[1]) && !safeUrl.test(match[1])) fail('URL must use https: or mailto:');
+    if (!safePath.test(match[1]) && !/^\.\/images\/[a-zA-Z0-9][a-zA-Z0-9_-]*\.png$/.test(match[1]) && !safeUrl.test(match[1])) fail('URL must use https: or mailto:');
   }
 }
 function validateSections(document, { requireVisible = true } = {}) {
@@ -60,13 +68,20 @@ export function relativeLuminance(color) {
 export function contrastRatio(first, second) { const [high, low] = [relativeLuminance(first), relativeLuminance(second)].sort((a, b) => b - a); return (high + 0.05) / (low + 0.05); }
 const chineseFields = { 'text/background': '正文/背景', 'text/surface': '正文/表面', 'accent link/background': '链接/背景', 'accent link/surface': '链接/表面', 'focus/background': '焦点/背景', 'focus/surface': '焦点/表面' };
 export function validateThemeContrast(theme) {
-  const checks = [['text/background', theme.text, theme.background, 4.5], ['text/surface', theme.text, theme.surface, 4.5], ['accent link/background', theme.accent, theme.background, 4.5], ['accent link/surface', theme.accent, theme.surface, 4.5], ['focus/background', theme.focus, theme.background, 3], ['focus/surface', theme.focus, theme.surface, 3]];
+  const focus = theme.focus ?? theme.accent;
+  const checks = [['text/background', theme.text, theme.background, 4.5], ['text/surface', theme.text, theme.surface, 4.5], ['accent link/background', theme.accent, theme.background, 4.5], ['accent link/surface', theme.accent, theme.surface, 4.5], ['focus/background', focus, theme.background, 3], ['focus/surface', focus, theme.surface, 3]];
   const results = checks.map(([field, first, second, required]) => ({ field, required, actual: contrastRatio(first, second) }));
   const failed = results.find((entry) => entry.actual < entry.required);
   if (failed) fail(`${chineseFields[failed.field]}: required ${failed.required}:1, actual ${failed.actual.toFixed(2)}:1`);
   return { valid: true, checks: results };
 }
-export function validateSite(site) { if (site?.theme) { checked(themeSchema, site.theme, 'theme is invalid'); validateThemeContrast(site.theme); } return site; }
+export function validateSite(site) {
+  checked(siteSchema, site, 'site configuration is invalid');
+  validateThemeContrast(site.theme);
+  if (site.avatar.mode === 'image' && !site.avatar.src) fail('image avatar requires a content-local source');
+  if (site.avatar.mode !== 'image' && site.avatar.src) fail('non-image avatar cannot define a source');
+  return site;
+}
 export function adoptEditorIds(document, idFactory) {
   for (const section of document.sections) { if (!section.id) section.id = idFactory(); for (const block of section.blocks) if (!block.id) block.id = idFactory(); }
   delete document.pendingEditorIds;

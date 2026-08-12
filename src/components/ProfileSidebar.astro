@@ -1,22 +1,28 @@
 ---
-import { site } from '../data/site.mjs';
+interface Props {
+  profile: { name: string; degree: string | null; institution: string | null; email: string | null; interests: string[]; avatar: { mode: 'initials' | 'hidden' | 'image'; src?: string; alt?: string }; links: { label: string; href: string }[] };
+}
+const { profile } = Astro.props;
 ---
 
 <aside class="profile-sidebar" aria-label="Profile">
-  <div class="monogram" aria-hidden="true">YW</div>
-  <h2>{site.name}</h2>
-  <p class="profile-degree">{site.degree}</p>
-  <p class="profile-institution">{site.institution}</p>
+  {profile.avatar.mode === 'initials' && <div class="monogram" aria-hidden="true">{profile.name.split(/\s+/).map((part) => part[0]).join('')}</div>}
+  {profile.avatar.mode === 'image' && <img class="profile-avatar" src={profile.avatar.src} alt={profile.avatar.alt ?? ''} />}
+  <h2>{profile.name}</h2>
+  {profile.degree && <p class="profile-degree">{profile.degree}</p>}
+  {profile.institution && <p class="profile-institution">{profile.institution}</p>}
 
-  <section class="sidebar-section" aria-labelledby="interests-heading">
+  {profile.interests.length > 0 && <section class="sidebar-section" aria-labelledby="interests-heading">
     <h3 id="interests-heading">Research Interests</h3>
     <ul>
-      {site.interests.map((interest) => <li>{interest}</li>)}
+      {profile.interests.map((interest) => <li>{interest}</li>)}
     </ul>
-  </section>
+  </section>}
 
-  <section class="sidebar-section" aria-labelledby="contact-heading">
+  {profile.email && <section class="sidebar-section" aria-labelledby="contact-heading">
     <h3 id="contact-heading">Contact</h3>
-    <a class="email-link" href={`mailto:${site.email}`}>{site.email}</a>
-  </section>
+    <a class="email-link" href={`mailto:${profile.email}`}>{profile.email}</a>
+  </section>}
+
+  {profile.links.length > 0 && <section class="sidebar-section" aria-label="Profile links"><ul>{profile.links.map((link) => <li><a href={link.href}>{link.label}</a></li>)}</ul></section>}
 </aside>

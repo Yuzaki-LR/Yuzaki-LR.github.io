@@ -9,3 +9,7 @@ scope:
   - "Power-management strategies, backup power, and representative aircraft or electrified-propulsion cases"
 order: 1
 ---
+<!-- editor:section id="researchsec1" kind="standard" hidden="false" -->
+## Manuscript scope
+<!-- editor:block id="researchblk1" type="paragraph" hidden="false" -->
+This record describes the submitted manuscript scope and editorial status.

@@ -1,6 +1,7 @@
 import { defineConfig } from 'astro/config';
 
 const site = process.env.SITE_URL;
+const base = process.env.BASE;
 
 export default defineConfig({
   output: 'static',
@@ -9,4 +10,5 @@ export default defineConfig({
     inlineStylesheets: 'never',
   },
   ...(site ? { site } : {}),
+  ...(base ? { base } : {}),
 });

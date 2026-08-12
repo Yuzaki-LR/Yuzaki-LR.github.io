@@ -7,7 +7,7 @@ import { serializePageFile } from './page-file.mjs';
 import { validatePage, validateProject, validateResearch, validateSite } from './schema.mjs';
 
 const slugPattern = /^[a-z][a-z0-9-]{0,62}$/;
-const imageSegment = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
+const imageSegment = /^[a-zA-Z0-9][a-zA-Z0-9_-]*\.png$/;
 const reservedDosDevice = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i;
 export function parseSiteYaml(source) { return parse(source); }
 export function serializeSiteYaml(site) { return stringify(site); }
@@ -53,10 +53,11 @@ function prepareDraft(draft, uploads) {
   for (const image of draft.images) { const destination = imageDestination(image?.destination, projectSlugs); const key = windowsDestinationKey(destination); if (images.has(key)) fail('duplicate image destination'); images.set(key, { destination, bytes: bytesOf(image) }); }
   const replacement = new Set();
   for (const image of uploads) { const destination = imageDestination(image?.destination, projectSlugs); const key = windowsDestinationKey(destination); if (replacement.has(key)) fail('duplicate image destination'); replacement.add(key); const existing = images.get(key); if (existing && existing.destination !== destination) fail('duplicate image destination'); images.set(key, { destination, bytes: bytesOf(image) }); }
+  if (draft.site.avatar.mode === 'image' && !images.has(windowsDestinationKey(draft.site.avatar.src.slice('./'.length)))) fail('image avatar source is missing from candidate images');
   const writes = [
-    ['site.yml', stringify(draft.site)], ['about.md', serializePageFile(draft.about)],
+    ['site.yml', stringify(draft.site)], ['pages/about.md', serializePageFile(draft.about)],
     ...draft.projects.map((record) => [`projects/${record.slug}/index.md`, serializeProjectFile({ ...record.document, slug: record.slug })]),
-    ...draft.research.map((record) => [`research/${record.slug}/index.md`, serializeResearchFile(record.document)]),
+    ...draft.research.map((record) => [`research/${record.slug}.md`, serializeResearchFile(record.document)]),
     ...[...images.values()].map(({ destination, bytes }) => [destination, bytes]),
   ];
   const destinations = new Set(); for (const [destination] of writes) { const key = windowsDestinationKey(destination); if (destinations.has(key)) fail('duplicate candidate destination'); destinations.add(key); }

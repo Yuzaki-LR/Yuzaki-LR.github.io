@@ -12,8 +12,8 @@
     "check": "astro check",
     "build": "astro build",
     "editor": "node editor/server/main.mjs",
-    "test:unit": "node --test test/*.test.mjs editor/test/*.test.mjs",
-    "test": "astro check && astro build && node --test test/*.test.mjs editor/test/*.test.mjs"
+    "test:unit": "node --test --test-concurrency=1 test/*.test.mjs editor/test/*.test.mjs",
+    "test": "astro check && astro build && node --test --test-concurrency=1 test/*.test.mjs editor/test/*.test.mjs"
   },
   "devDependencies": {
     "@astrojs/check": "0.9.10",

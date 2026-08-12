@@ -1,12 +1,17 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import { loadSiteRepository } from '../lib/content/repository.mjs';
+import { toPublicSiteModel } from '../lib/content/render-model.mjs';
+
+const site = toPublicSiteModel(await loadSiteRepository(), { base: import.meta.env.BASE_URL });
 ---
 
 <BaseLayout
   title="Page not found | Yunxi Wu"
   description="The requested page could not be found."
+  site={site}
 >
   <h1>Page not found</h1>
   <p>The requested page does not exist or has moved.</p>
-  <p><a href="/">Return to About</a></p>
+  <p><a href={site.base}>Return to About</a></p>
 </BaseLayout>

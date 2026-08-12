@@ -1,17 +1,19 @@
 ---
 import type { CollectionEntry } from 'astro:content';
+import { internalHref } from '../lib/content/render-model.mjs';
 
 interface Props {
   evidence: CollectionEntry<'projects'>['data']['evidence'];
+  base: string;
 }
 
-const { evidence } = Astro.props;
+const { evidence, base } = Astro.props;
 ---
 
 <div class="evidence-grid">
   {evidence.map((item) => (
     <figure>
-      <img src={item.src} alt={item.alt} loading="lazy" decoding="async" />
+      <img src={internalHref(base, item.src)} alt={item.alt} loading="lazy" decoding="async" />
       <figcaption>{item.caption}</figcaption>
     </figure>
   ))}

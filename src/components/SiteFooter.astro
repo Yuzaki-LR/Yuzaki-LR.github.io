@@ -1,8 +1,9 @@
 ---
-import { site } from '../data/site.mjs';
+interface Props { profile: { name: string; degree: string | null }; }
+const { profile } = Astro.props;
 ---
 
 <footer class="site-footer">
-  <span>&copy; {new Date().getFullYear()} {site.name}</span>
-  <span>{site.degree}</span>
+  <span>&copy; {new Date().getFullYear()} {profile.name}</span>
+  {profile.degree && <span>{profile.degree}</span>}
 </footer>

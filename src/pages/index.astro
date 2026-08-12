@@ -3,36 +3,39 @@ import { getCollection } from 'astro:content';
 import ManuscriptEntry from '../components/ManuscriptEntry.astro';
 import ProjectListItem from '../components/ProjectListItem.astro';
 import BaseLayout from '../layouts/BaseLayout.astro';
-import { site } from '../data/site.mjs';
+import { loadSiteRepository } from '../lib/content/repository.mjs';
+import { toPublicSiteModel } from '../lib/content/render-model.mjs';
 
 const projects = (await getCollection('projects'))
   .filter((project) => project.data.featured)
   .sort((a, b) => a.data.order - b.data.order);
-const manuscripts = (await getCollection('research')).sort((a, b) => a.data.order - b.data.order);
+const site = toPublicSiteModel(await loadSiteRepository(), { base: import.meta.env.BASE_URL });
+const manuscripts = site.research;
 ---
 
 <BaseLayout
   title="Yunxi Wu | Electronic and Electrical Engineering"
   description="Academic profile of Yunxi Wu, a BEng Electronic and Electrical Engineering student at the University of Birmingham."
+  site={site}
   activeNav="About"
 >
   <h1>About</h1>
-  <p class="lead">{site.intro}</p>
+  <p class="lead">{site.profile.intro}</p>
 
   <section>
     <h2>Selected Projects</h2>
     <div class="project-list">
-      {projects.map((project) => <ProjectListItem project={project} headingLevel="h3" />)}
+      {projects.map((project) => <ProjectListItem project={project} headingLevel="h3" base={site.base} />)}
     </div>
   </section>
 
   <section>
     <h2>Research &amp; Manuscripts</h2>
-    {manuscripts.map((entry) => <ManuscriptEntry entry={entry} />)}
+    {manuscripts.map((entry: { title: string; status?: string; authorship?: string; summary: string; scope?: string[] }) => <ManuscriptEntry entry={entry} />)}
   </section>
 
   <div class="notice">
     <strong>Current direction</strong>
-    <p>{site.currentDirection}</p>
+    <p>{site.about.currentDirection}</p>
   </div>
 </BaseLayout>

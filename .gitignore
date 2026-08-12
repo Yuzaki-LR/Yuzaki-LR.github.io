@@ -3,6 +3,7 @@
 node_modules/
 dist/
 .astro/
+.astro-build-test-lock
 .DS_Store
 Thumbs.db
 tmp/

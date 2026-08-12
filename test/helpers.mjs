@@ -1,5 +1,6 @@
-import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
+import { cp, link, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rename, rm, unlink, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 
 export const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -39,5 +40,111 @@ export async function withContentCodecWorkspace(run) {
       throw new Error('content codec test workspace sentinel changed');
     }
     await rm(parent, { recursive: true, force: true });
+  }
+}
+
+export async function copyRepositoryFixture(name) {
+  if (!/^[a-z][a-z0-9-]*$/.test(name)) throw new Error('fixture name is invalid');
+  const fixtureRoot = await realpath(path.join(projectRoot, 'test', 'fixtures', 'content-v2'));
+  const source = await realpath(path.join(fixtureRoot, name));
+  if (!source.startsWith(`${fixtureRoot}${path.sep}`)) throw new Error('fixture path escapes content-v2');
+  const parent = await mkdtemp(path.join(projectRoot, '.site-repository-test-'));
+  const sentinel = path.join(parent, '.site-repository-sentinel');
+  const root = path.join(parent, 'content');
+  await writeFile(sentinel, 'site-repository-test-sentinel\n');
+  await cp(source, root, { recursive: true });
+  let cleaned = false;
+  return {
+    root,
+    cleanup: async () => {
+      if (cleaned) return;
+      cleaned = true;
+      if (await readFile(sentinel, 'utf8') !== 'site-repository-test-sentinel\n') {
+        throw new Error('site repository test workspace sentinel changed');
+      }
+      await rm(parent, { recursive: true, force: true });
+    },
+  };
+}
+
+const astroBuildLock = path.join(projectRoot, '.astro-build-test-lock');
+const lockVersion = 1;
+function lockOwner(source) {
+  let value;
+  try { value = JSON.parse(source); } catch { throw new Error('malformed build lock'); }
+  if (!value || Object.keys(value).length !== 3 || value.version !== lockVersion || !Number.isSafeInteger(value.pid) || value.pid <= 0 || typeof value.token !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.token)) throw new Error('malformed build lock');
+  return value;
+}
+async function claimAndDeleteBuildLock(metadata, claim) {
+  try { await rename(astroBuildLock, claim); } catch (error) {
+    if (error?.code === 'ENOENT') throw new Error('build lock ownership changed');
+    throw error;
+  }
+  try {
+    const entry = await lstat(claim);
+    if (!entry.isFile() || entry.isSymbolicLink()) throw new Error('malformed build lock');
+    if ((await readFile(claim, 'utf8')) !== metadata) throw new Error('build lock ownership changed');
+    await unlink(claim);
+  } catch (error) {
+    try {
+      await link(claim, astroBuildLock);
+    } catch (recoveryError) {
+      if (recoveryError?.code === 'EEXIST') throw error;
+      throw new Error('build lock claim recovery failed; claim preserved', { cause: recoveryError });
+    }
+    try {
+      await unlink(claim);
+    } catch (recoveryError) {
+      throw new Error('build lock claim recovery failed; claim preserved', { cause: recoveryError });
+    }
+    throw error;
+  }
+}
+async function recoverDeadBuildLock() {
+  const metadata = await readFile(astroBuildLock, 'utf8');
+  const owner = lockOwner(metadata);
+  try { process.kill(owner.pid, 0); return false; } catch (error) {
+    if (error?.code !== 'ESRCH') return false;
+  }
+  const claim = `${astroBuildLock}.claim-${process.pid}-${randomUUID()}`;
+  await claimAndDeleteBuildLock(metadata, claim);
+  return true;
+}
+export async function acquireAstroBuildLock({ timeoutMs = 10_000 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  while (true) {
+    try {
+      const handle = await open(astroBuildLock, 'wx');
+      const owner = { version: lockVersion, pid: process.pid, token: randomUUID() };
+      const metadata = `${JSON.stringify(owner)}\n`;
+      try {
+        await handle.writeFile(metadata);
+      } catch (error) {
+        await handle.close();
+        try { await claimAndDeleteBuildLock(metadata, `${astroBuildLock}.claim-${process.pid}-${owner.token}`); } catch { /* Preserve an unproven replacement or claim. */ }
+        throw error;
+      }
+      await handle.close();
+      let released = false;
+      return async () => {
+        if (released) return;
+        const claim = `${astroBuildLock}.claim-${process.pid}-${owner.token}`;
+        await claimAndDeleteBuildLock(metadata, claim);
+        released = true;
+      };
+    } catch (error) {
+      if (error?.code !== 'EEXIST') throw error;
+      if (await recoverDeadBuildLock()) continue;
+      if (Date.now() >= deadline) throw new Error('timed out waiting for build lock');
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  }
+}
+export async function withAstroBuildLock(run) {
+  const release = await acquireAstroBuildLock();
+  try {
+    return await run();
+  } finally {
+    await release();
   }
 }

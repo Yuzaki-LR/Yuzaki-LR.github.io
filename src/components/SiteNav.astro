@@ -1,15 +1,14 @@
 ---
-import { site } from '../data/site.mjs';
-
 interface Props {
+  site: { base: string; profile: { name: string }; navigation: { label: string; href: string }[] };
   active?: 'About' | 'Projects' | 'Research';
 }
 
-const { active } = Astro.props;
+const { site, active } = Astro.props;
 ---
 
 <nav class="site-nav" aria-label="Primary">
-  <a class="site-name" href="/">{site.name}</a>
+  <a class="site-name" href={site.base}>{site.profile.name}</a>
   <ul>
     {site.navigation.map((item) => (
       <li>

@@ -1,0 +1,28 @@
+name: Yunxi Wu
+degree: BEng Electronic and Electrical Engineering
+institution: University of Birmingham
+email: yxw1331@student.bham.ac.uk
+intro: >-
+  I am a BEng Electronic and Electrical Engineering student at the University of Birmingham, working across systems modelling, control and signal processing while developing toward research in Embodied AI, Computer Vision and Robotics.
+interests:
+  - Embodied AI
+  - Machine Learning
+  - Computer Vision
+  - Robotics
+avatar:
+  mode: initials
+links:
+  github: null
+  linkedin: null
+  googleScholar: null
+  orcid: null
+  custom: []
+theme:
+  background: '#ffffff'
+  surface: '#f7f8f9'
+  text: '#17212b'
+  accent: '#2d587a'
+navigation:
+  - { label: About, href: / }
+  - { label: Projects, href: /projects/ }
+  - { label: Research, href: /research/ }

@@ -1,18 +1,14 @@
 ---
-import type { CollectionEntry } from 'astro:content';
-
 interface Props {
-  entry: CollectionEntry<'research'>;
+  entry: { title: string; status?: string; authorship?: string; summary: string; scope?: string[] };
 }
 
 const { entry } = Astro.props;
 ---
 
 <article class="manuscript-entry">
-  <p class="manuscript-status">{entry.data.status}</p>
-  <h3>{entry.data.title}</h3>
-  <p><strong>{entry.data.authorship}.</strong> {entry.data.summary}</p>
-  <ul>
-    {entry.data.scope.map((item) => <li>{item}</li>)}
-  </ul>
+  {entry.status && <p class="manuscript-status">{entry.status}</p>}
+  <h3>{entry.title}</h3>
+  <p>{entry.authorship && <strong>{entry.authorship}.</strong>} {entry.summary}</p>
+  {entry.scope?.length && <ul>{entry.scope.map((item) => <li>{item}</li>)}</ul>}
 </article>

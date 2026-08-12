@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { projectRoot } from './helpers.mjs';
+import { projectRoot, readDist } from './helpers.mjs';
 
 const cssPath = path.join(projectRoot, 'src', 'styles', 'global.css');
 
@@ -56,6 +56,10 @@ function contrastRatio(first, second) {
 test('focus indicator has at least 3:1 contrast on white, surface, and footer backgrounds', async () => {
   const css = await readFile(cssPath, 'utf8');
   const properties = customProperties(css);
+  const html = await readDist('index.html');
+  const focus = html.match(/--focus:(#[0-9a-f]{6})/i)?.[1];
+  assert.ok(focus, 'built page must emit the validated focus token');
+  properties.set('--focus', focus);
   const focusRule = ruleBody(
     css,
     'a:focus-visible\\s*,\\s*button:focus-visible\\s*,\\s*\\[tabindex\\]:focus-visible',

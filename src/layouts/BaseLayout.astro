@@ -7,10 +7,16 @@ import '../styles/global.css';
 interface Props {
   title: string;
   description: string;
+  site: {
+    base: string;
+    profile: { name: string; degree: string | null; institution: string | null; email: string | null; interests: string[]; avatar: { mode: 'initials' | 'hidden' | 'image'; src?: string; alt?: string }; links: { label: string; href: string }[] };
+    navigation: { label: string; href: string }[];
+    theme: { background: string; surface: string; text: string; accent: string; focus: string };
+  };
   activeNav?: 'About' | 'Projects' | 'Research';
 }
 
-const { title, description, activeNav } = Astro.props;
+const { title, description, site, activeNav } = Astro.props;
 const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site).toString() : undefined;
 ---
 
@@ -28,17 +34,17 @@ const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site).toString(
     <meta name="twitter:card" content="summary" />
     <title>{title}</title>
   </head>
-  <body>
+  <body style={`--background:${site.theme.background};--surface:${site.theme.surface};--text:${site.theme.text};--accent:${site.theme.accent};--focus:${site.theme.focus};`}>
     <a class="skip-link" href="#main-content">Skip to main content</a>
     <header class="site-header">
-      <SiteNav active={activeNav} />
+      <SiteNav site={site} active={activeNav} />
     </header>
     <div class="page-shell">
-      <ProfileSidebar />
+      <ProfileSidebar profile={site.profile} />
       <main id="main-content" tabindex="-1">
         <slot />
       </main>
     </div>
-    <SiteFooter />
+    <SiteFooter profile={site.profile} />
   </body>
 </html>

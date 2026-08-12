@@ -13,6 +13,11 @@ const base = `---\nkind: individual\ncategory: Display\ntitle: X\nshortTitle: X\
 const INVALID_INDIVIDUAL_SOURCE = `${base}<!-- editor:section id="sectionx1" kind="contribution" hidden="false" -->\n## My Role and Contribution\n<!-- editor:block id="blockx001" type="paragraph" hidden="false" -->\nText\n`;
 const INVALID_TEAM_SOURCE = `${base.replace('kind: individual', 'kind: team')}<!-- editor:section id="sectionx2" kind="standard" hidden="false" -->\n## Overview\n<!-- editor:block id="blockx002" type="paragraph" hidden="false" -->\nText\n`;
 const VALID_TEAM_SOURCE = `${INVALID_TEAM_SOURCE}\n<!-- editor:section id="sectionx3" kind="contribution" hidden="false" -->\n## My Role and Contribution\n<!-- editor:block id="blockx003" type="paragraph" hidden="false" -->\nText\n`;
+const completeSite = () => ({
+  name: 'Yunxi', degree: 'Degree', institution: 'Institution', email: 'yunxi@example.test', intro: 'Intro', interests: [],
+  avatar: { mode: 'hidden' }, links: { github: null, linkedin: null, googleScholar: null, orcid: null, custom: [] },
+  theme: { text: '#17212b', background: '#ffffff', surface: '#f7f8f9', accent: '#2d587a' }, navigation: [],
+});
 
 test('supported Markdown round-trips semantically and advanced bytes survive exactly', async () => {
   const source = await readFixture('advanced/index.md');
@@ -40,14 +45,24 @@ test('site, page and research records round-trip and research edits remain stabl
   assert.equal(validateResearch(research).frontmatter.order, 1);
 });
 
+test('candidate bundles reject incomplete site configuration before creating output', async () => {
+  await withContentCodecWorkspace(async ({ root }) => {
+    const about = parsePageFile('## About\nA\n'); adoptEditorIds(about, (() => { let n = 0; return () => `aboutcfg${++n}`; })());
+    for (const site of [{ ...completeSite(), name: undefined }, { ...completeSite(), avatar: undefined }, { ...completeSite(), theme: undefined }, { ...completeSite(), navigation: undefined }]) {
+      await assert.rejects(writeCandidateBundle({ root, draft: { site, about, projects: [], research: [], images: [] } }), /site configuration is invalid/);
+      await assert.rejects(access(path.join(root, '.candidate')));
+    }
+  });
+});
+
 test('research folders are the sole slug identity and research YAML cannot contain slug', async () => {
   const source = '---\ntitle: Research\nsummary: Summary\norder: 1\nslug: forbidden\n---\n<!-- editor:section id="sectionr3" kind="standard" hidden="false" -->\n## Notes\n<!-- editor:block id="blockr003" type="paragraph" hidden="false" -->\nBody\n';
   assert.throws(() => validateResearch(parseResearchFile(source)), /research frontmatter/);
   const research = parseResearchFile(source.replace('slug: forbidden\n', ''));
   await withContentCodecWorkspace(async ({ root }) => {
     const about = parsePageFile('## About\nA\n'); adoptEditorIds(about, (() => { let n = 0; return () => `aboutrun${++n}`; })());
-    await writeCandidateBundle({ root, draft: { site: {}, about, projects: [], research: [{ slug: 'folder-identity', document: research }], images: [] } });
-    const emitted = await readFile(path.join(root, '.candidate', 'research', 'folder-identity', 'index.md'), 'utf8');
+    await writeCandidateBundle({ root, draft: { site: completeSite(), about, projects: [], research: [{ slug: 'folder-identity', document: research }], images: [] } });
+    const emitted = await readFile(path.join(root, '.candidate', 'research', 'folder-identity.md'), 'utf8');
     assert.doesNotMatch(emitted, /^slug:/m);
   });
 });
@@ -64,7 +79,7 @@ test('unmarked Markdown receives ids only in candidate output', async () => {
   assert.equal(source.includes('editor:'), false);
   await withContentCodecWorkspace(async ({ root }) => {
     const about = parsePageFile('## About\nText\n'); adoptEditorIds(about, (() => { let n = 0; return () => `aboutid${++n}`; })());
-    const manifest = await writeCandidateBundle({ root, draft: { site: { name: 'Yunxi' }, about, projects: [{ slug: 'project', document: first }], research: [], images: [] } });
+    const manifest = await writeCandidateBundle({ root, draft: { site: completeSite(), about, projects: [{ slug: 'project', document: first }], research: [], images: [] } });
     assert.ok(manifest.files.some((file) => file.endsWith('projects/project/index.md')));
     assert.match(await readFile(path.join(root, '.candidate', 'projects', 'project', 'index.md'), 'utf8'), /editor:/);
     assert.equal(source.includes('editor:'), false);
@@ -75,12 +90,13 @@ test('candidate bundles require every collection before writing and emit every c
   const project = parseProjectFile(`${base}<!-- editor:section id="sectiond1" kind="standard" hidden="false" -->\n## Overview\n<!-- editor:block id="blockd001" type="paragraph" hidden="false" -->\nOne\n`);
   const research = parseResearchFile('---\ntitle: R\nsummary: S\norder: 1\n---\n<!-- editor:section id="sectiond2" kind="standard" hidden="false" -->\n## Notes\n<!-- editor:block id="blockd002" type="paragraph" hidden="false" -->\nTwo\n');
   await withContentCodecWorkspace(async ({ root }) => {
-    await assert.rejects(writeCandidateBundle({ root, draft: { site: {}, about: {}, projects: [], research: [] } }), /images collection/);
+    await assert.rejects(writeCandidateBundle({ root, draft: { site: completeSite(), about: {}, projects: [], research: [] } }), /images collection/);
     await assert.rejects(access(path.join(root, '.candidate')));
     const about = parsePageFile('## About\nA\n'); adoptEditorIds(about, (() => { let n = 0; return () => `aboutid${++n}`; })());
-    const manifest = await writeCandidateBundle({ root, draft: { site: {}, about, projects: [{ slug: 'one-project', document: project }, { slug: 'two-project', document: project }], research: [{ slug: 'one-research', document: research }, { slug: 'two-research', document: research }], images: [] } });
+    const manifest = await writeCandidateBundle({ root, draft: { site: completeSite(), about, projects: [{ slug: 'one-project', document: project }, { slug: 'two-project', document: project }], research: [{ slug: 'one-research', document: research }, { slug: 'two-research', document: research }], images: [] } });
     assert.deepEqual(manifest.files.filter((file) => file.includes('/projects/')).sort(), ['.candidate/projects/one-project/index.md', '.candidate/projects/two-project/index.md']);
-    assert.deepEqual(manifest.files.filter((file) => file.includes('/research/')).sort(), ['.candidate/research/one-research/index.md', '.candidate/research/two-research/index.md']);
+    assert.deepEqual(manifest.files.filter((file) => file.includes('/research/')).sort(), ['.candidate/research/one-research.md', '.candidate/research/two-research.md']);
+    assert.deepEqual(parseSiteYaml(await readFile(path.join(root, '.candidate', 'site.yml'), 'utf8')), completeSite());
   });
 });
 
@@ -88,7 +104,7 @@ test('candidate slugs are confined and reject traversal forms before any outside
   const project = parseProjectFile(`${base}<!-- editor:section id="sectione1" kind="standard" hidden="false" -->\n## Overview\n<!-- editor:block id="blocke001" type="paragraph" hidden="false" -->\nSafe\n`);
   await withContentCodecWorkspace(async ({ root, parent }) => {
     const outside = path.join(parent, 'escaped.md'); const about = parsePageFile('## About\nA\n'); adoptEditorIds(about, (() => { let n = 0; return () => `aboutid${++n}`; })());
-    for (const slug of ['..', '../escaped', '/absolute', 'C:\\drive', '%2e%2e']) await assert.rejects(writeCandidateBundle({ root, draft: { site: {}, about, projects: [{ slug, document: project }], research: [], images: [] } }), /stable slug/);
+    for (const slug of ['..', '../escaped', '/absolute', 'C:\\drive', '%2e%2e']) await assert.rejects(writeCandidateBundle({ root, draft: { site: completeSite(), about, projects: [{ slug, document: project }], research: [], images: [] } }), /stable slug/);
     await assert.rejects(access(outside));
   });
 });
@@ -97,7 +113,7 @@ test('candidate operation roots are new snapshots with no stale records or image
   await withContentCodecWorkspace(async ({ root }) => {
     await mkdir(path.join(root, '.candidate')); await writeFile(path.join(root, '.candidate', 'stale.md'), 'stale');
     const about = parsePageFile('## About\nA\n'); adoptEditorIds(about, (() => { let n = 0; return () => `aboutid${++n}`; })());
-    await assert.rejects(writeCandidateBundle({ root, draft: { site: {}, about, projects: [], research: [], images: [] } }), /candidate.*exists/);
+    await assert.rejects(writeCandidateBundle({ root, draft: { site: completeSite(), about, projects: [], research: [], images: [] } }), /candidate.*exists/);
     assert.equal(await readFile(path.join(root, '.candidate', 'stale.md'), 'utf8'), 'stale');
   });
 });
@@ -107,7 +123,7 @@ test('candidate records and logical image destinations are unique, explicit, and
     const project = parseProjectFile(`${base}<!-- editor:section id="sectionh1" kind="standard" hidden="false" -->\n## Overview\n<!-- editor:block id="blockh001" type="paragraph" hidden="false" -->\nOne\n`); project.slug = 'one-project';
     const research = parseResearchFile('---\ntitle: R\nsummary: S\norder: 1\n---\n<!-- editor:section id="sectionh2" kind="standard" hidden="false" -->\n## Notes\n<!-- editor:block id="blockh002" type="paragraph" hidden="false" -->\nTwo\n'); research.slug = 'one-research';
     const about = parsePageFile('## About\nA\n'); adoptEditorIds(about, (() => { let n = 0; return () => `aboutid${++n}`; })());
-    const common = { site: {}, about, research: [ { slug: 'one-research', document: research } ], images: [] };
+    const common = { site: completeSite(), about, research: [ { slug: 'one-research', document: research } ], images: [] };
     await assert.rejects(writeCandidateBundle({ root, draft: { ...common, projects: [{ slug: 'one-project', document: project }, { slug: 'one-project', document: project }] } }), /duplicate slug/);
     await assert.rejects(writeCandidateBundle({ root, draft: { ...common, projects: [{ slug: 'other-project', document: project }] } }), /document slug/);
     await assert.rejects(writeCandidateBundle({ root, draft: { ...common, projects: [], images: [{ destination: 'avatar.png', bytes: Buffer.from('x') }] } }), /logical image destination/);
@@ -117,13 +133,13 @@ test('candidate records and logical image destinations are unique, explicit, and
 test('candidate image replacements are explicit and collisions fail before candidate creation', async () => {
   await withContentCodecWorkspace(async ({ root }) => {
     const about = parsePageFile('## About\nA\n'); adoptEditorIds(about, (() => { let n = 0; return () => `aboutid${++n}`; })());
-    const draft = { site: {}, about, projects: [], research: [], images: [{ destination: 'site-images/avatar.png', bytes: Buffer.from('old') }] };
+    const draft = { site: completeSite(), about, projects: [], research: [], images: [{ destination: 'site-images/avatar.png', bytes: Buffer.from('old') }] };
     const manifest = await writeCandidateBundle({ root, draft, uploads: [{ destination: 'site-images/avatar.png', bytes: Buffer.from('new') }] });
     assert.equal(await readFile(path.join(root, '.candidate', 'site-images', 'avatar.png'), 'utf8'), 'new'); assert.ok(manifest.files.includes('.candidate/site-images/avatar.png'));
   });
   await withContentCodecWorkspace(async ({ root }) => {
     const about = parsePageFile('## About\nA\n'); adoptEditorIds(about, (() => { let n = 0; return () => `aboutid${++n}`; })());
-    await assert.rejects(writeCandidateBundle({ root, draft: { site: {}, about, projects: [], research: [], images: [{ destination: 'site-images/a.png', bytes: Buffer.from('a') }, { destination: 'site-images/a.png', bytes: Buffer.from('b') }] } }), /duplicate image destination/);
+    await assert.rejects(writeCandidateBundle({ root, draft: { site: completeSite(), about, projects: [], research: [], images: [{ destination: 'site-images/a.png', bytes: Buffer.from('a') }, { destination: 'site-images/a.png', bytes: Buffer.from('b') }] } }), /duplicate image destination/);
     await assert.rejects(access(path.join(root, '.candidate')));
   });
 });
@@ -131,7 +147,7 @@ test('candidate image replacements are explicit and collisions fail before candi
 test('candidate destinations reject Windows aliases before creating any output', async () => {
   const draftFor = (images) => {
     const about = parsePageFile('## About\nA\n'); adoptEditorIds(about, (() => { let n = 0; return () => `aboutwin${++n}`; })());
-    return { site: {}, about, projects: [], research: [], images };
+    return { site: completeSite(), about, projects: [], research: [], images };
   };
   for (const destination of ['site-images/name. ', 'site-images/name.', 'site-images/CON.png', 'site-images/NUL.txt', 'site-images/COM1.png', 'site-images/name:stream.png']) {
     await withContentCodecWorkspace(async ({ root }) => {
@@ -154,7 +170,7 @@ test('candidate rejects reparse escape before outside bytes change', async (t) =
     const target = path.join(parent, 'outside'); await mkdir(target); await writeFile(path.join(target, 'outside.txt'), 'unchanged');
     try { await symlink(target, path.join(root, '.candidate'), 'junction'); } catch { t.skip('symlink creation unavailable'); return; }
     const about = parsePageFile('## About\nA\n'); adoptEditorIds(about, (() => { let n = 0; return () => `aboutid${++n}`; })());
-    await assert.rejects(writeCandidateBundle({ root, draft: { site: {}, about, projects: [], research: [], images: [] } }), /candidate.*exists|reparse/);
+    await assert.rejects(writeCandidateBundle({ root, draft: { site: completeSite(), about, projects: [], research: [], images: [] } }), /candidate.*exists|reparse/);
     assert.equal(await readFile(path.join(target, 'outside.txt'), 'utf8'), 'unchanged'); assert.equal(await readFile(sentinel, 'utf8'), 'content-codec-test-sentinel\n');
   });
 });
@@ -223,7 +239,7 @@ test('unsafe paths, URLs, duplicate ids, malformed markers and inaccessible them
   const project = parseProjectFile(INVALID_TEAM_SOURCE.replace('kind="standard"', 'kind="contribution"'));
   project.sections[0].blocks[0].id = 'bad';
   assert.throws(() => validateProject(project), /stable editor id/);
-  assert.throws(() => validateSite({ theme: { text: '#777777', background: '#ffffff', surface: '#ffffff', accent: '#777777', focus: '#777777' } }), /正文\/背景/);
+  assert.throws(() => validateSite({ ...completeSite(), theme: { text: '#777777', background: '#ffffff', surface: '#ffffff', accent: '#777777', focus: '#777777' } }), /正文\/背景/);
   assert.throws(() => validateThemeContrast({ text: '#777777', background: '#ffffff', surface: '#ffffff', accent: '#777777', focus: '#777777' }), /正文\/背景/);
 });
 
@@ -236,8 +252,8 @@ test('malformed markers remain unowned raw Markdown and duplicate ids are reject
 
 test('contrast boundaries use the WCAG thresholds for normal text and focus', () => {
   assert.throws(
-    () => validateSite({ theme: { text: '#949494', background: '#ffffff', surface: '#ffffff', accent: '#000000', focus: '#000000', largeText: true } }),
-    (error) => error.message.includes('theme'),
+    () => validateThemeContrast({ text: '#949494', background: '#ffffff', surface: '#ffffff', accent: '#000000', focus: '#000000' }),
+    (error) => error.message.includes('required 4.5:1'),
   );
   assert.throws(
     () => validateThemeContrast({ text: '#949494', background: '#ffffff', surface: '#ffffff', accent: '#000000', focus: '#000000', largeText: 'yes' }),

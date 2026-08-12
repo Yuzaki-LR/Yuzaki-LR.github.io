@@ -1,15 +1,17 @@
 ---
-import { getCollection } from 'astro:content';
 import ManuscriptEntry from '../components/ManuscriptEntry.astro';
 import BaseLayout from '../layouts/BaseLayout.astro';
-import { site } from '../data/site.mjs';
+import { loadSiteRepository } from '../lib/content/repository.mjs';
+import { toPublicSiteModel } from '../lib/content/render-model.mjs';
 
-const manuscripts = (await getCollection('research')).sort((a, b) => a.data.order - b.data.order);
+const site = toPublicSiteModel(await loadSiteRepository(), { base: import.meta.env.BASE_URL });
+const manuscripts = site.research;
 ---
 
 <BaseLayout
   title="Research | Yunxi Wu"
   description="Research interests, ongoing direction, and submitted manuscript by Yunxi Wu."
+  site={site}
   activeNav="Research"
 >
   <h1>Research</h1>
@@ -17,17 +19,17 @@ const manuscripts = (await getCollection('research')).sort((a, b) => a.data.orde
   <section>
     <h2>Research Interests</h2>
     <ul class="interest-list">
-      {site.interests.map((interest) => <li>{interest}</li>)}
+      {site.profile.interests.map((interest: string) => <li>{interest}</li>)}
     </ul>
   </section>
 
   <section>
     <h2>Ongoing Work</h2>
-    <p>{site.currentDirection}</p>
+    <p>{site.about.currentDirection}</p>
   </section>
 
   <section>
     <h2>Research &amp; Manuscripts</h2>
-    {manuscripts.map((entry) => <ManuscriptEntry entry={entry} />)}
+    {manuscripts.map((entry: { title: string; status?: string; authorship?: string; summary: string; scope?: string[] }) => <ManuscriptEntry entry={entry} />)}
   </section>
 </BaseLayout>

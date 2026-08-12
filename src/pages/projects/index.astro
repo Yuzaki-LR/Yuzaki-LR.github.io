@@ -2,18 +2,22 @@
 import { getCollection } from 'astro:content';
 import ProjectListItem from '../../components/ProjectListItem.astro';
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import { loadSiteRepository } from '../../lib/content/repository.mjs';
+import { toPublicSiteModel } from '../../lib/content/render-model.mjs';
 
 const projects = (await getCollection('projects')).sort((a, b) => a.data.order - b.data.order);
+const site = toPublicSiteModel(await loadSiteRepository(), { base: import.meta.env.BASE_URL });
 ---
 
 <BaseLayout
   title="Projects | Yunxi Wu"
   description="Selected electronic and electrical engineering projects by Yunxi Wu."
+  site={site}
   activeNav="Projects"
 >
   <h1>Projects</h1>
   <p class="lead">Selected work in systems engineering, power and control simulation, and communication-system analysis.</p>
   <div class="project-list">
-    {projects.map((project) => <ProjectListItem project={project} headingLevel="h2" />)}
+    {projects.map((project) => <ProjectListItem project={project} headingLevel="h2" base={site.base} />)}
   </div>
 </BaseLayout>

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -62,24 +62,27 @@ function privacyViolations(relativePath, source) {
   return violations;
 }
 
-test('every Git-tracked text file excludes private identifiers and non-public name oracles', () => {
+function scanIndexedAndWorkingTexts({ paths = trackedPaths(), indexText = (relativePath) => execFileSync('git', ['-c', `safe.directory=${projectRoot}`, 'show', `:${relativePath}`], { cwd: projectRoot, encoding: 'utf8' }), workingText = (relativePath) => {
+  const target = path.join(projectRoot, relativePath);
+  return existsSync(target) ? readFileSync(target, 'utf8') : undefined;
+} } = {}) {
   const unclassified = [];
   const violations = [];
-
-  for (const relativePath of trackedPaths()) {
+  for (const relativePath of paths) {
     const extension = path.extname(relativePath);
     if (binaryExtensions.has(extension)) continue;
-    if (relativePath !== '.gitignore' && !textExtensions.has(extension)) {
-      unclassified.push(relativePath);
-      continue;
-    }
-
-    const source = readFileSync(path.join(projectRoot, relativePath), 'utf8');
-    violations.push(...privacyViolations(relativePath, source));
+    if (relativePath !== '.gitignore' && !textExtensions.has(extension)) { unclassified.push(relativePath); continue; }
+    const indexed = indexText(relativePath);
+    violations.push(...privacyViolations(`${relativePath} (index)`, indexed));
+    const working = workingText(relativePath);
+    if (working !== undefined && working !== indexed) violations.push(...privacyViolations(`${relativePath} (working tree)`, working));
   }
+  if (unclassified.length) throw new Error(`unclassified tracked files: ${unclassified.join(', ')}`);
+  return violations;
+}
 
-  assert.deepEqual(unclassified, [], 'every tracked file must be classified as text or approved binary');
-  assert.deepEqual(violations, []);
+test('every Git-tracked text file excludes private identifiers and non-public name oracles', () => {
+  assert.deepEqual(scanIndexedAndWorkingTexts(), []);
 });
 
 test('repository privacy scan rejects sanitized identifier and collaborator-name sentinels', () => {
@@ -91,6 +94,15 @@ test('repository privacy scan rejects sanitized identifier and collaborator-name
     'synthetic-sentinel.txt: contains a seven-digit identifier',
     'synthetic-sentinel.txt: contains a non-public personal-name oracle',
   ]);
+});
+
+test('privacy scan retains an index-only tracked source when its working-tree file is absent', () => {
+  const identifierSentinel = ['1234', '567'].join('');
+  assert.deepEqual(scanIndexedAndWorkingTexts({
+    paths: ['deleted.md'],
+    indexText: () => `student: ${identifierSentinel}`,
+    workingText: () => undefined,
+  }), ['deleted.md (index): contains a seven-digit identifier']);
 });
 
 test('repository privacy scan classifies every tracked source, test, doc, workflow, and config file', () => {

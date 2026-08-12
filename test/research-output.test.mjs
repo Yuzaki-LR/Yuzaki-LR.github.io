@@ -7,7 +7,7 @@ const manuscriptTitle = 'Progress on More Electric Aircraft Power Systems at Hig
 const exactStatus = 'Submitted manuscript \u2014 Under editorial review';
 const authorship = 'First-author review manuscript';
 const currentDirection = 'I am currently developing projects and technical foundations in Embodied AI, Computer Vision, and Robotics. Completed outcomes will be added only when supporting evidence is ready.';
-const interests = ['Embodied AI', 'Computer Vision', 'Robotics'];
+const interests = ['Embodied AI', 'Machine Learning', 'Computer Vision', 'Robotics'];
 const prohibitedStatus = /under peer review|accepted|in press|published/i;
 
 function singleElement(elements, message) {
