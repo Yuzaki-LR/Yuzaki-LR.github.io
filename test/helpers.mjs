@@ -2,6 +2,8 @@ import { cp, link, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, ren
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
+import YAML from 'yaml';
+import { loadProjects } from '../src/lib/content/repository.mjs';
 
 export const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const distRoot = path.join(projectRoot, 'dist');
@@ -16,6 +18,35 @@ export async function readBuiltCss() {
   const cssFiles = files.filter((file) => file.endsWith('.css'));
   return Promise.all(cssFiles.map((file) => readFile(path.join(assetDir, file), 'utf8')))
     .then((parts) => parts.join('\n'));
+}
+
+export async function loadProjectFixture(slug) {
+  const projects = await loadProjects();
+  const project = projects.find((entry) => entry.slug === slug);
+  if (!project) throw new Error(`project fixture not found: ${slug}`);
+  return project;
+}
+
+export async function readBuiltRoute(route) {
+  if (typeof route !== 'string' || !/^\/(?:[a-z0-9-]+\/)*$/.test(route)) {
+    throw new Error('built route must be a confined directory route');
+  }
+  const relative = route === '/' ? 'index.html' : `${route.slice(1)}index.html`;
+  const root = await realpath(distRoot);
+  const target = path.resolve(root, ...relative.split('/'));
+  if (!target.startsWith(`${root}${path.sep}`) && target !== root) throw new Error('built route escapes dist');
+  const resolved = await realpath(target);
+  if (!resolved.startsWith(`${root}${path.sep}`)) throw new Error('built route escapes dist');
+  return readFile(resolved, 'utf8');
+}
+
+export async function loadEvidenceRegister() {
+  const source = await readFile(path.join(projectRoot, 'docs', 'content-evidence.md'), 'utf8');
+  const match = source.match(/<!-- claim-register:start -->\s*```yaml\s*([\s\S]*?)```\s*<!-- claim-register:end -->/);
+  if (!match) throw new Error('canonical claim register is missing');
+  const value = YAML.parse(match[1]);
+  if (!value || value.version !== 1 || !Array.isArray(value.supportedFactClasses) || !Array.isArray(value.claims) || !Array.isArray(value.legacyAssets)) throw new Error('canonical claim register is invalid');
+  return value;
 }
 
 export async function readFixture(relativePath) {

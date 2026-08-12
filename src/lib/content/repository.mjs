@@ -57,7 +57,7 @@ async function loadProjectImages(root, slug, document) {
   }
   return images;
 }
-async function loadProjects(root) {
+async function loadProjectRecords(root) {
   const directory = path.join(root, 'projects');
   try { await lstat(directory); } catch { return []; }
   const records = [];
@@ -70,6 +70,11 @@ async function loadProjects(root) {
     records.push({ slug: entry.name, document, sourcePath, images: await loadProjectImages(root, entry.name, document) });
   }
   return records.sort((a, b) => a.document.frontmatter.order - b.document.frontmatter.order);
+}
+export async function loadProjects({ contentRoot } = {}) {
+  contentRoot ??= await defaultContentRoot();
+  const root = await realDirectory(contentRoot instanceof URL ? contentRoot : contentRoot, 'content root is invalid');
+  return (await loadProjectRecords(root)).map(({ document }) => document);
 }
 async function loadResearch(root) {
   const directory = path.join(root, 'research');
@@ -114,7 +119,7 @@ export async function loadSiteRepository({ contentRoot } = {}) {
   validateSite(site);
   const about = parsePageFile(await readFile(aboutPath, 'utf8'));
   validatePage(about);
-  const [projects, research, manifest] = await Promise.all([loadProjects(root), loadResearch(root), computeRepositoryManifest(root)]);
+  const [projects, research, manifest] = await Promise.all([loadProjectRecords(root), loadResearch(root), computeRepositoryManifest(root)]);
   const images = projects.flatMap((project) => project.images);
   if (site.avatar.mode === 'image') {
     const source = site.avatar.src;

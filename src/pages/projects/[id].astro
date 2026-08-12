@@ -1,47 +1,26 @@
 ---
-import { getCollection } from 'astro:content';
-import type { CollectionEntry } from 'astro:content';
-import EvidenceGallery from '../../components/EvidenceGallery.astro';
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import ProjectDocument from '../../components/ProjectDocument.astro';
 import { loadSiteRepository } from '../../lib/content/repository.mjs';
 import { toPublicSiteModel } from '../../lib/content/render-model.mjs';
 
 export async function getStaticPaths() {
-  const projects = await getCollection('projects');
-  return projects.map((project) => ({
-    params: { id: project.id },
-    props: { project },
-  }));
+  const repository = await loadSiteRepository();
+  return repository.projects.map(({ document }) => ({ params: { id: document.slug }, props: { project: document } }));
 }
 
 interface Props {
-  project: CollectionEntry<'projects'>;
+  project: {
+    slug: string;
+    frontmatter: { category: string; title: string; shortTitle: string; summary: string; role: string; methods: string[] };
+    sections: Array<{ kind: 'standard' | 'contribution'; hidden: boolean; title: string; blocks: Array<{ id: string; type: string; hidden: boolean; markdown?: string; raw?: string }> }>;
+  };
 }
-
 const { project } = Astro.props;
-const data = project.data;
-const site = toPublicSiteModel(await loadSiteRepository(), { base: import.meta.env.BASE_URL });
+const repository = await loadSiteRepository();
+const site = toPublicSiteModel(repository, { base: import.meta.env.BASE_URL });
 ---
 
-<BaseLayout
-  title={`${data.shortTitle} | Yunxi Wu`}
-  description={data.summary}
-  site={site}
-  activeNav="Projects"
->
-  <p class="eyebrow">{data.type}</p>
-  <h1>{data.title}</h1>
-  <p class="lead">{data.summary}</p>
-
-  <dl class="project-summary">
-    <div><dt>Role</dt><dd>{data.role}</dd></div>
-    <div><dt>Methods and tools</dt><dd>{data.tools.join(' · ')}</dd></div>
-  </dl>
-
-  <section><h2>Overview</h2>{data.overview.map((paragraph) => <p>{paragraph}</p>)}</section>
-  <section><h2>My Contribution</h2><ul>{data.contributions.map((item) => <li>{item}</li>)}</ul></section>
-  <section><h2>Technical Approach</h2>{data.technicalApproach.map((paragraph) => <p>{paragraph}</p>)}</section>
-  <section><h2>Results &amp; Validation</h2>{data.results.map((paragraph) => <p>{paragraph}</p>)}</section>
-  <section><h2>Evidence Gallery</h2><EvidenceGallery evidence={data.evidence} base={import.meta.env.BASE_URL} /></section>
-  <section><h2>Reflection &amp; Next Steps</h2>{data.reflection.map((paragraph) => <p>{paragraph}</p>)}</section>
+<BaseLayout title={`${project.frontmatter.shortTitle} | Yunxi Wu`} description={project.frontmatter.summary} site={site} activeNav="Projects">
+  <ProjectDocument project={project} base={import.meta.env.BASE_URL} />
 </BaseLayout>

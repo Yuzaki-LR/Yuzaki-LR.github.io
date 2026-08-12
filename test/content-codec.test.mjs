@@ -8,6 +8,7 @@ import { parseResearchFile, serializeResearchFile } from '../src/lib/content/res
 import { parsePageFile, serializePageFile } from '../src/lib/content/page-file.mjs';
 import { parseSiteYaml, serializeSiteYaml, writeCandidateBundle } from '../src/lib/content/bundle.mjs';
 import { adoptEditorIds, validatePage, validateProject, validateResearch, validateSite, validateThemeContrast } from '../src/lib/content/schema.mjs';
+import { renderSafeBlock } from '../src/lib/content/safe-render.mjs';
 
 const base = `---\nkind: individual\ncategory: Display\ntitle: X\nshortTitle: X\nsummary: Summary\nrole: Role\nmethods: [Method]\nfeatured: false\norder: 1\n---\n`;
 const INVALID_INDIVIDUAL_SOURCE = `${base}<!-- editor:section id="sectionx1" kind="contribution" hidden="false" -->\n## My Role and Contribution\n<!-- editor:block id="blockx001" type="paragraph" hidden="false" -->\nText\n`;
@@ -185,7 +186,7 @@ test('unmarked supported AST nodes become ordered blocks and round-trip independ
   assert.deepEqual(parseProjectFile(serializeProjectFile(parsed)), parsed);
 });
 
-test('exact schemas reject bad project types, duplicate non-project ids, unsafe links, and malformed blocks', () => {
+test('exact schemas reject bad project types, duplicate non-project ids and malformed blocks while render boundary deactivates unsafe links', () => {
   const invalid = parseProjectFile(VALID_TEAM_SOURCE);
   invalid.frontmatter.order = 1.5;
   assert.throws(() => validateProject(invalid), /frontmatter/);
@@ -195,7 +196,8 @@ test('exact schemas reject bad project types, duplicate non-project ids, unsafe 
   invalid.frontmatter.featured = false; invalid.frontmatter.unexpected = true;
   assert.throws(() => validateProject(invalid), /frontmatter/);
   const page = parsePageFile('<!-- editor:section id="sectionf1" kind="standard" hidden="false" -->\n## About\n<!-- editor:block id="blockf001" type="paragraph" hidden="false" -->\n[unsafe](javascript:alert(1))\n');
-  assert.throws(() => validateResearch({ frontmatter: { title: 'R', summary: 'S', order: 1 }, ...page }), /URL/);
+  assert.doesNotThrow(() => validateResearch({ frontmatter: { title: 'R', summary: 'S', order: 1 }, ...page }));
+  assert.equal(renderSafeBlock(page.sections[0].blocks[0]), '<p>unsafe</p>');
   const duplicatePage = structuredClone(page); duplicatePage.sections[0].blocks[0].markdown = 'safe'; duplicatePage.sections[0].blocks[0].id = duplicatePage.sections[0].id;
   assert.throws(() => validatePage(duplicatePage), /duplicate editor id/);
   const duplicateResearch = { frontmatter: { title: 'R', summary: 'S', order: 1 }, ...structuredClone(page) }; duplicateResearch.sections[0].blocks[0].markdown = 'safe'; duplicateResearch.sections[0].blocks[0].id = duplicateResearch.sections[0].id;

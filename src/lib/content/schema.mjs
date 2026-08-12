@@ -32,9 +32,6 @@ function assertBlock(block) {
     const image = (block.markdown ?? '').match(/^!\[[^\]]*\]\(([^)]+)\)/m)?.[1];
     if (!image || (!safePath.test(image) && !/^\.\/images\/[a-zA-Z0-9][a-zA-Z0-9_-]*\.png$/.test(image))) fail('image path must be a safe relative path');
   }
-  for (const match of (block.markdown ?? '').matchAll(/\]\(([^)]+)\)/g)) {
-    if (!safePath.test(match[1]) && !/^\.\/images\/[a-zA-Z0-9][a-zA-Z0-9_-]*\.png$/.test(match[1]) && !safeUrl.test(match[1])) fail('URL must use https: or mailto:');
-  }
 }
 function validateSections(document, { requireVisible = true } = {}) {
   const seen = new Set();
@@ -56,6 +53,7 @@ export function validateProject(document) {
   if (document.frontmatter.kind === 'individual' && contributions.length) fail('individual project cannot contain a contribution section');
   if (document.frontmatter.kind === 'team' && contributions.length !== 1) fail('team project requires exactly one contribution section');
   if (contributions.some((section) => section.title !== CONTRIBUTION_TITLE)) fail('contribution section title must be My Role and Contribution');
+  if (contributions.some((section) => !section.blocks.some((block) => !block.hidden && /[\p{L}\p{N}]/u.test((block.markdown ?? block.raw ?? '').trim())))) fail('contribution section requires non-empty visible text');
   return document;
 }
 export function validateResearch(document) { checked(researchSchema, document.frontmatter, 'research frontmatter is invalid'); validateSections(document); return document; }

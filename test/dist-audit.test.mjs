@@ -5,6 +5,8 @@ import { lstat, readFile, readdir, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load } from 'cheerio';
+import { loadSiteRepository } from '../src/lib/content/repository.mjs';
+import { listStaticAssetRoutes } from '../src/lib/content/asset-routes.mjs';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const distRoot = path.join(projectRoot, 'dist');
@@ -17,15 +19,6 @@ const generatedRoutes = [
   'projects/index.html',
   'projects/life-support-system/index.html',
   'research/index.html',
-];
-
-const approvedImages = [
-  '/assets/projects/communication-channel-capacity.png',
-  '/assets/projects/communication-filter-results.png',
-  '/assets/projects/future-ocean-habitat-master-system.png',
-  '/assets/projects/future-ocean-habitat-udc-flow.png',
-  '/assets/projects/life-support-efficiency.png',
-  '/assets/projects/life-support-hvac-control.png',
 ];
 
 const privateIdentifierPattern = /\b\d{7}\b/u;
@@ -488,6 +481,7 @@ test('all real internal anchors resolve within the generated site and same-page 
 });
 
 test('all real images are accessible and the site emits each approved image source exactly once', async () => {
+  const approvedImages = listStaticAssetRoutes(await loadSiteRepository()).map(({ pathname }) => pathname).sort();
   const observedSources = [];
   const origin = 'https://generated-site.invalid';
 

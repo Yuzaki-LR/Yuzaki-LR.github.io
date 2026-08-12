@@ -6,6 +6,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { copyRepositoryFixture, distRoot, projectRoot, withAstroBuildLock } from './helpers.mjs';
+import { loadSiteRepository } from '../src/lib/content/repository.mjs';
 
 function run(args, options) {
   const child = spawn(process.execPath, args, options);
@@ -46,7 +47,8 @@ test('fresh build under an Astro base emits base-aware internal navigation and f
   const projectEntries = await readdir(path.join(distRoot, 'projects'), { withFileTypes: true });
   const projectHtml = await Promise.all(projectEntries.filter((entry) => entry.isDirectory()).map((entry) => readFile(path.join(distRoot, 'projects', entry.name, 'index.html'), 'utf8')));
   const evidenceSources = projectHtml.flatMap((document) => [...document.matchAll(/<img[^>]+src="([^"]+)"/g)].map((match) => match[1]).filter((source) => source.includes('/assets/')));
-  assert.ok(evidenceSources.length > 0);
+  const expectedImageCount = (await loadSiteRepository()).images.filter(({ kind }) => kind === 'project').length;
+  assert.equal(evidenceSources.length, expectedImageCount);
   assert.ok(evidenceSources.every((source) => source.startsWith('/repo/assets/')));
   assert.ok(evidenceSources.every((source) => !source.startsWith('/assets/')));
 });

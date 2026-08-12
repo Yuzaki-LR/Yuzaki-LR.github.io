@@ -1,0 +1,10 @@
+---
+import { renderSafeBlock } from '../lib/content/safe-render.mjs';
+
+interface Block { id: string; type: string; hidden: boolean; markdown?: string; raw?: string }
+interface Props { blocks: Block[]; projectSlug: string; base?: string }
+const { blocks, projectSlug, base = '/' } = Astro.props;
+const visible = blocks.filter((block) => !block.hidden);
+---
+
+{visible.map((block) => <div class="content-block" data-block-id={block.id}><Fragment set:html={renderSafeBlock(block, { projectSlug, base })} /></div>)}

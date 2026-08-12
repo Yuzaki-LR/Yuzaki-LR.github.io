@@ -1,23 +1,16 @@
 ---
-import type { CollectionEntry } from 'astro:content';
-
-interface Props {
-  project: CollectionEntry<'projects'>;
-  headingLevel: 'h2' | 'h3';
-  base?: string;
-}
-
 const { project, headingLevel, base = '/' } = Astro.props;
 const Heading = headingLevel;
+const data = project.frontmatter;
 ---
 
 <article class="project-row">
   <div>
-    <Heading><a href={`${base}projects/${project.id}/`}>{project.data.title}</a></Heading>
-    <p>{project.data.summary}</p>
+    <Heading><a href={`${base}projects/${project.slug}/`}>{data.title}</a></Heading>
+    <p>{data.summary}</p>
   </div>
   <dl class="project-meta">
-    <div><dt>Type</dt><dd>{project.data.type}</dd></div>
-    <div><dt>Role</dt><dd>{project.data.role}</dd></div>
+    <div><dt>Type</dt><dd>{data.category}</dd></div>
+    <div><dt>Role</dt><dd>{data.role}</dd></div>
   </dl>
 </article>
