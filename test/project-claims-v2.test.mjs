@@ -61,7 +61,7 @@ function claimSignals(text) {
 }
 
 function unregisteredClaimFragments(project, claims, domBlocks = null) {
-  return project.sections.flatMap(({ blocks }) => blocks).filter(({ hidden }) => !hidden).flatMap((block) => {
+  return project.sections.flatMap(({ blocks }) => blocks).filter(({ hidden, type }) => !hidden && type !== 'image').flatMap((block) => {
     const blockClaims = claims.filter(({ project: slug, publicBlock }) => slug === project.slug && publicBlock === block.id);
     const surfaces = [['source', visibleBlockText(block, project.slug)]];
     if (domBlocks) surfaces.push(['DOM', domBlocks(block.id)]);
@@ -69,9 +69,9 @@ function unregisteredClaimFragments(project, claims, domBlocks = null) {
   });
 }
 
-test('claim register contains the complete audited public claim set and legacy asset boundary', async () => {
+test('claim register contains the complete audited public claim set and separate asset boundary', async () => {
   const register = await loadEvidenceRegister();
-  const { claims, legacyAssets } = register;
+  const { claims, assets } = register;
   assert.deepEqual(new Set(register.supportedFactClasses), classes);
   assert.deepEqual(new Set(claims.map(({ claimId }) => claimId)), requiredClaimIds);
   assert.equal(new Set(claims.map(({ claimId }) => claimId)).size, claims.length);
@@ -88,10 +88,8 @@ test('claim register contains the complete audited public claim set and legacy a
     assert.match(claim.permittedWording, literalPattern(claim.publicAnchor), claim.claimId);
     assert.doesNotMatch(JSON.stringify(claim), /(?:[A-Z]:[\\/]|OneDrive|student number|grading|assignment instructions|\.pdf\b)/i);
   }
-  assert.equal(legacyAssets.length, 6);
-  assert.ok(legacyAssets.every(({ status, sanitisationDecision }) => status === 'pending Task 5 replacement' && typeof sanitisationDecision === 'string' && sanitisationDecision.length > 0));
-  assert.equal(register.legacyAssetsAreClaimOracle, false);
-  assert.equal(register.legacyAssetsPermitReuse, false);
+  assert.ok(Array.isArray(assets) && assets.length > 0);
+  assert.equal(register.assetsAreClaimOracle, false);
 });
 
 test('each claim is satisfied independently in its registered project source and fresh DOM block', async () => {
@@ -170,6 +168,14 @@ test('removing a claim row exposes its fragment even when the block retains othe
   const project = await loadProjectFixture('life-support-system');
   const withoutRatio = claims.filter(({ claimId }) => claimId !== 'life-cumulative-energy-ratio');
   assert.notDeepEqual(unregisteredClaimFragments(project, withoutRatio), []);
+});
+
+test('claim scanning delegates image blocks to the asset oracle without weakening technical prose coverage', async () => {
+  const { claims } = await loadEvidenceRegister();
+  const project = structuredClone(await loadProjectFixture('life-support-system'));
+  const paragraph = project.sections.flatMap(({ blocks }) => blocks).find(({ id }) => id === 'life-evidence-summary');
+  paragraph.markdown += ' The system achieved 999 kW.';
+  assert.notDeepEqual(unregisteredClaimFragments(project, claims), [], 'technical prose remains covered by claim scanning');
 });
 
 test('registered qualifiers drive special boundaries and unsupported status vocabulary', async () => {

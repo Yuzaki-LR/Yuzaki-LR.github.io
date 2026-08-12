@@ -37,3 +37,9 @@ The model retains rated-point device models and empirical gains. Higher-fidelity
 ## Selected Technical Evidence
 <!-- editor:block id="life-evidence-summary" type="paragraph" hidden="false" -->
 The most informative evidence is the closed-loop coupling across power conversion and process states, together with the disturbance-sequence bus trace and the explicitly qualified cumulative energy accounting.
+<!-- editor:block id="lifeimgbus01" type="image" hidden="false" -->
+![Block diagram showing the 180 V reference, feedforward duty-cycle path, PI feedback correction, PWM output and measured-voltage feedback.](./images/bus-control.png)
+Feedforward and PI feedback control used to regulate the 180 V life-support bus.
+<!-- editor:block id="lifeimgenv01" type="image" hidden="false" -->
+![Five simulation plots showing oxygen generation, oxygen concentration, carbon-dioxide removal and concentration, cabin temperature, target temperature and dew point over time.](./images/environmental-regulation.png)
+Simulated oxygen, carbon-dioxide, cabin-temperature and dew-point regulation under the documented operating sequence.

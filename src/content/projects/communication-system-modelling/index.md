@@ -35,3 +35,9 @@ Interpretation is limited by zero-phase `filtfilt`, known noise amplitude during
 ## Selected Technical Evidence
 <!-- editor:block id="comm-evidence-summary" type="paragraph" hidden="false" -->
 The strongest evidence is the reproducible parameter-selection logic and the explicit resolution and evaluation limits attached to the reported BER and MSE comparison.
+<!-- editor:block id="commimgmse01" type="image" hidden="false" -->
+![Paired plots of mean-squared error and bit-error rate against noise amplitude for median, FFT, Butterworth and Chebyshev filters.](./images/mse-ber.png)
+Mean-squared error and bit-error rate across the four optimised filtering pipelines in the documented simulation.
+<!-- editor:block id="commimgwin01" type="image" hidden="false" -->
+![Two plots showing the selected median-window length against noise amplitude and MSE and BER sensitivity across candidate window lengths at noise amplitude 0.90.](./images/median-window-sensitivity.png)
+Median-window selection and MSE/BER sensitivity across candidate window lengths in the documented simulation.

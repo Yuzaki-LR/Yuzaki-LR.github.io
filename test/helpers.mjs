@@ -45,7 +45,7 @@ export async function loadEvidenceRegister() {
   const match = source.match(/<!-- claim-register:start -->\s*```yaml\s*([\s\S]*?)```\s*<!-- claim-register:end -->/);
   if (!match) throw new Error('canonical claim register is missing');
   const value = YAML.parse(match[1]);
-  if (!value || value.version !== 1 || !Array.isArray(value.supportedFactClasses) || !Array.isArray(value.claims) || !Array.isArray(value.legacyAssets)) throw new Error('canonical claim register is invalid');
+  if (!value || value.version !== 1 || !Array.isArray(value.supportedFactClasses) || !Array.isArray(value.claims) || !Array.isArray(value.assets)) throw new Error('canonical claim register is invalid');
   return value;
 }
 

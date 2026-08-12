@@ -35,3 +35,9 @@ Safety-critical protection is assigned to deterministic local controllers and ha
 ## Selected Technical Evidence
 <!-- editor:block id="foh-evidence-summary" type="paragraph" hidden="false" -->
 The strongest engineering evidence is the convergence-based energy balance, explicit microgrid resilience logic and the thermally coupled data-centre architecture, each bounded to the team concept and its documented assumptions.
+<!-- editor:block id="fohimgotec01" type="image" hidden="false" -->
+![Log-scale residual power error falling across eleven fixed-point iterations, with iteration number on the horizontal axis and absolute net-power error in watts on the vertical axis.](./images/otec-convergence.png)
+Fixed-point convergence of the coupled gross-generation and parasitic-load calculation.
+<!-- editor:block id="fohimgudc001" type="image" hidden="false" -->
+![Thermal-system diagram showing four labelled water loops, heat exchangers, pumps, storage and heat consumers linking the underwater data centre to heat recovery and seawater rejection.](./images/udc-thermal-loops.png)
+Four hydraulically isolated but thermally coupled loops linking rack cooling, heat recovery and seawater rejection.

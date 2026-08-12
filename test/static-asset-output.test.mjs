@@ -16,6 +16,19 @@ function run(args, options) {
   return once(child, 'close').then(([code]) => ({ code, stderr }));
 }
 
+test('the canonical build copies every visible project asset byte-identically', async () => {
+  const images = (await loadSiteRepository()).images.filter(({ kind }) => kind === 'project');
+  assert.ok(images.length > 0);
+  for (const image of images) {
+    const outputPath = `assets/projects/${image.slug}/${image.name}`;
+    const [source, emitted] = await Promise.all([
+      readFile(image.sourcePath),
+      readFile(path.join(distRoot, ...outputPath.split('/'))),
+    ]);
+    assert.equal(createHash('sha256').update(emitted).digest('hex'), createHash('sha256').update(source).digest('hex'), outputPath);
+  }
+});
+
 test('a fresh build emits the confined project PNG byte-identically without source metadata', async () => {
   const fixture = await copyRepositoryFixture('one-image');
   try {

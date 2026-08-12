@@ -1,0 +1,54 @@
+{
+  "formatVersion": 1,
+  "coordinateSystem": "rotated-mediabox-upper-left-points-half-open",
+  "assets": [
+    {
+      "id": "life-support-bus-control",
+      "sourceKind": "pdf-page",
+      "sourceId": "life-support-report",
+      "page": 9,
+      "boxPt": [72, 72, 523, 381],
+      "destination": "src/content/projects/life-support-system/images/bus-control.png"
+    },
+    {
+      "id": "life-support-environmental-regulation",
+      "sourceKind": "pdf-page",
+      "sourceId": "life-support-report",
+      "page": 17,
+      "boxPt": [72, 72, 523, 643],
+      "destination": "src/content/projects/life-support-system/images/environmental-regulation.png"
+    },
+    {
+      "id": "communication-mse-ber",
+      "sourceKind": "source-image",
+      "sourceId": "communication-source-images",
+      "sourceName": "MSE BER.tif",
+      "transform": "auto-orient-and-trim-uniform-white",
+      "destination": "src/content/projects/communication-system-modelling/images/mse-ber.png"
+    },
+    {
+      "id": "communication-median-window-sensitivity",
+      "sourceKind": "source-image",
+      "sourceId": "communication-source-images",
+      "sourceName": "窗口敏感性图.tif",
+      "transform": "auto-orient-and-trim-uniform-white",
+      "destination": "src/content/projects/communication-system-modelling/images/median-window-sensitivity.png"
+    },
+    {
+      "id": "habitat-otec-convergence",
+      "sourceKind": "pdf-page",
+      "sourceId": "habitat-team-report",
+      "page": 130,
+      "boxPt": [130, 76, 468, 349],
+      "destination": "src/content/projects/future-ocean-habitat/images/otec-convergence.png"
+    },
+    {
+      "id": "habitat-udc-thermal-loops",
+      "sourceKind": "pdf-page",
+      "sourceId": "habitat-team-report",
+      "page": 371,
+      "boxPt": [94, 148, 535, 431],
+      "destination": "src/content/projects/future-ocean-habitat/images/udc-thermal-loops.png"
+    }
+  ]
+}

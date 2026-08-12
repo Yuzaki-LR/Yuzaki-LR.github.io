@@ -35,10 +35,11 @@ test('project lists and documents preserve semantic heading hierarchy', async ()
   }
 });
 
-test('empty image surfaces do not render and metadata uses readable separators', async () => {
+test('visible image surfaces render from canonical blocks and metadata uses readable separators', async () => {
   for (const project of await loadProjects()) {
     const $ = load(await readBuiltRoute(`/projects/${project.slug}/`));
-    assert.equal($('figure').length, 0);
+    const visibleImages = project.sections.flatMap(({ blocks }) => blocks).filter(({ type, hidden }) => type === 'image' && !hidden);
+    assert.equal($('figure').length, visibleImages.length);
     assert.equal($('h2').filter((_, el) => /gallery/i.test($(el).text())).length, 0);
     assert.equal($('dt').filter((_, el) => $(el).text() === 'Methods and tools').next('dd').text(), project.frontmatter.methods.join(' · '));
   }
