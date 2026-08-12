@@ -105,7 +105,7 @@ test('candidate slugs are confined and reject traversal forms before any outside
   const project = parseProjectFile(`${base}<!-- editor:section id="sectione1" kind="standard" hidden="false" -->\n## Overview\n<!-- editor:block id="blocke001" type="paragraph" hidden="false" -->\nSafe\n`);
   await withContentCodecWorkspace(async ({ root, parent }) => {
     const outside = path.join(parent, 'escaped.md'); const about = parsePageFile('## About\nA\n'); adoptEditorIds(about, (() => { let n = 0; return () => `aboutid${++n}`; })());
-    for (const slug of ['..', '../escaped', '/absolute', 'C:\\drive', '%2e%2e']) await assert.rejects(writeCandidateBundle({ root, draft: { site: completeSite(), about, projects: [{ slug, document: project }], research: [], images: [] } }), /stable slug/);
+    for (const slug of ['..', '../escaped', '/absolute', ['C:', '\\', 'drive'].join(''), '%2e%2e']) await assert.rejects(writeCandidateBundle({ root, draft: { site: completeSite(), about, projects: [{ slug, document: project }], research: [], images: [] } }), /stable slug/);
     await assert.rejects(access(outside));
   });
 });

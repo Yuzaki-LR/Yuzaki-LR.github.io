@@ -29,6 +29,16 @@ body {
   font-size: 17px;
 }
 
+img {
+  max-width: 100%;
+}
+
+pre,
+table {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
 a {
   color: var(--accent);
   text-decoration-thickness: 1px;
@@ -170,6 +180,7 @@ button:focus-visible,
 
 main {
   min-width: 0;
+  max-width: 48rem;
 }
 
 main h1 {
@@ -330,6 +341,10 @@ main h3 {
   background: var(--surface);
 }
 
+.project-section {
+  max-width: 46rem;
+}
+
 .evidence-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -346,6 +361,10 @@ main h3 {
   height: auto;
   border: 1px solid var(--rule);
   background: #fff;
+}
+
+.evidence-link {
+  display: block;
 }
 
 .evidence-grid figcaption {

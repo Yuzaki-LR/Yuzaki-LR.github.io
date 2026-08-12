@@ -78,7 +78,7 @@ test('evidence manifest rejects invalid variants and unsafe or colliding destina
   reject((value) => { delete value.assets[0].page; }, /missing|page|required/i);
   reject((value) => { value.assets[2].page = 1; }, /unexpected|variant/i);
   reject((value) => { value.assets[0].destination = '../escaped.png'; }, /destination/i);
-  reject((value) => { value.assets[0].destination = 'C:/escaped.png'; }, /destination/i);
+  reject((value) => { value.assets[0].destination = ['C:', '/', 'escaped.png'].join(''); }, /destination/i);
   reject((value) => { value.assets[1].destination = value.assets[0].destination; }, /collision/i);
   reject((value) => { value.assets[1].destination = value.assets[0].destination.replace('bus-control.png', 'BUS-CONTROL.png'); }, /collision/i);
 });

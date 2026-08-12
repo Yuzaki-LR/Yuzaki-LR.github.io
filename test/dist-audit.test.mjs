@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { lstat, readFile, readdir, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
@@ -7,32 +8,55 @@ import { fileURLToPath } from 'node:url';
 import { load } from 'cheerio';
 import { loadSiteRepository } from '../src/lib/content/repository.mjs';
 import { listStaticAssetRoutes } from '../src/lib/content/asset-routes.mjs';
+import { absoluteLocalPath, documentSiteBase, expandSiteBase, inventoryBuildInputs, normalizeSiteBase, normalizedPrivacyText, stripSiteBase, trackedTextSurfaces } from './generated-audit-helpers.mjs';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const distRoot = path.join(projectRoot, 'dist');
 
-const generatedRoutes = [
-  '404.html',
-  'index.html',
-  'projects/communication-system-modelling/index.html',
-  'projects/future-ocean-habitat/index.html',
-  'projects/index.html',
-  'projects/life-support-system/index.html',
-  'research/index.html',
-];
-
 const privateIdentifierPattern = /\b\d{7}\b/u;
 const nonPublicNameSentinelPattern = new RegExp(['Private', 'Collaborator'].join('\\s+'), 'i');
+const generatedOrigin = 'https://generated-site.invalid';
 
-const expectedCurrentNavigation = new Map([
-  ['404.html', null],
-  ['index.html', { text: 'About', href: '/' }],
-  ['projects/communication-system-modelling/index.html', { text: 'Projects', href: '/projects/' }],
-  ['projects/future-ocean-habitat/index.html', { text: 'Projects', href: '/projects/' }],
-  ['projects/index.html', { text: 'Projects', href: '/projects/' }],
-  ['projects/life-support-system/index.html', { text: 'Projects', href: '/projects/' }],
-  ['research/index.html', { text: 'Research', href: '/research/' }],
-]);
+function routeFromHref(href, siteBase) {
+  const url = new URL(href, generatedOrigin);
+  assert.equal(url.origin, generatedOrigin, `navigation href ${href} must remain in the user site`);
+  assert.equal(url.search, '', `navigation href ${href} must not contain a query`);
+  assert.equal(url.hash, '', `navigation href ${href} must not contain a fragment`);
+  const relative = stripSiteBase(decodeURIComponent(url.pathname), siteBase).replace(/^\/+/, '');
+  return relative === '' ? 'index.html' : `${relative.replace(/\/+$/, '')}/index.html`;
+}
+
+async function expectedGeneratedRoutes() {
+  const repository = await loadSiteRepository();
+  const home = load(await readFile(path.join(distRoot, 'index.html'), 'utf8'));
+  const siteBase = emittedSiteBase(home);
+  const navigationRoutes = home('nav[aria-label="Primary"] a[href]').map((_, element) => routeFromHref(home(element).attr('href'), siteBase)).get();
+  return [...new Set([
+    '404.html',
+    ...navigationRoutes,
+    ...repository.projects.map(({ document }) => `projects/${document.slug}/index.html`),
+  ])].sort();
+}
+
+function emittedSiteBase($) {
+  return normalizeSiteBase(exactlyOne($('nav[aria-label="Primary"] .site-name[href]'), 'site identity link').attr('href'));
+}
+
+async function canonicalSiteBase() {
+  const filename = await canonicalExistingFile(path.join(distRoot, 'index.html'), 'canonical homepage');
+  return emittedSiteBase(load(await readFile(filename, 'utf8')));
+}
+
+function expectedCurrentNavigation(repository, route, siteBase) {
+  if (route === '404.html') return null;
+  const pathname = new URL(routeUrl(route, siteBase), generatedOrigin).pathname;
+  const matches = repository.site.navigation.filter(({ href }) => {
+    const navigationPath = new URL(expandSiteBase(href, siteBase), generatedOrigin).pathname;
+    return pathname === navigationPath || (href !== '/' && pathname.startsWith(navigationPath));
+  });
+  assert.equal(matches.length, 1, `${route} must map to one canonical navigation item`);
+  return { text: matches[0].label, href: expandSiteBase(matches[0].href, siteBase) };
+}
 
 function normalizedText(value) {
   return value
@@ -74,10 +98,6 @@ function visibleText(element) {
 
 function decodedAttributeValues($) {
   return $('*').toArray().flatMap((element) => Object.values(element.attribs ?? {}));
-}
-
-function normalizedPrivacyText(value) {
-  return value.normalize('NFKC').replace(/[\s\p{Z}]+/gu, ' ').trim();
 }
 
 const privacyContextBoundaryTags = new Set([
@@ -199,39 +219,8 @@ function decodedTextContexts($) {
     .filter((context) => context !== '');
 }
 
-function externalWebUrl(value) {
-  const candidate = normalizedPrivacyText(value);
-  if (candidate === '' || /[\s\p{Z}]/u.test(candidate)) return null;
-
-  try {
-    const url = new URL(candidate);
-    return /^(?:http|https):$/i.test(url.protocol) && url.hostname !== '' ? url : null;
-  } catch {
-    return null;
-  }
-}
-
 function assertNoAbsoluteLocalPath(value, context) {
-  const candidate = normalizedPrivacyText(value);
-  if (candidate === '') return;
-
-  const fileUriPattern = /(?<![A-Za-z0-9+.-])file:[\\/]+/i;
-  const driveOrUncPattern = /(?:(?<![A-Za-z0-9])[A-Za-z]:[\\/]|\\\\[^\\/\s]+[\\/][^\\/\s]+)/i;
-  const posixLocalRootPattern = /(?<![A-Za-z0-9._~-])\/(?:Users|home|tmp|var|private|mnt|rds|workspace)(?:[\\/]|$)/i;
-  assert.doesNotMatch(candidate, fileUriPattern, `${context} must exclude absolute file URIs`);
-  assert.doesNotMatch(candidate, driveOrUncPattern, `${context} must exclude absolute local paths`);
-
-  const webUrl = externalWebUrl(candidate);
-  if (webUrl) {
-    assert.doesNotMatch(
-      `${webUrl.search}\n${webUrl.hash}`,
-      posixLocalRootPattern,
-      `${context} must not hide a separate local path outside its web pathname`,
-    );
-    return;
-  }
-
-  assert.doesNotMatch(candidate, posixLocalRootPattern, `${context} must exclude absolute local paths`);
+  assert.equal(absoluteLocalPath(value), null, `${context} must exclude absolute local paths`);
 }
 
 function exactlyOne(elements, description) {
@@ -244,8 +233,10 @@ function filesystemIdentity(canonicalPath) {
 }
 
 async function recursiveHtmlFiles(directory, prefix = '', state = null) {
+  const canonicalProjectRoot = state?.canonicalProjectRoot ?? await realpath(projectRoot);
   const canonicalRoot = state?.canonicalRoot ?? await realpath(distRoot);
   const visitedDirectories = state?.visitedDirectories ?? new Set();
+  if (prefix === '') assertCanonicalContainment(canonicalProjectRoot, canonicalRoot, 'dist root');
   const directoryContext = prefix === '' ? 'dist root' : `generated directory ${prefix}`;
   const directoryInfo = await lstat(directory);
   assert.ok(!directoryInfo.isSymbolicLink(), `${directoryContext} must not be a symlink or junction`);
@@ -274,6 +265,7 @@ async function recursiveHtmlFiles(directory, prefix = '', state = null) {
 
     if (entryInfo.isDirectory()) {
       files.push(...await recursiveHtmlFiles(absolutePath, relativePath, {
+        canonicalProjectRoot,
         canonicalRoot,
         visitedDirectories,
       }));
@@ -284,31 +276,42 @@ async function recursiveHtmlFiles(directory, prefix = '', state = null) {
     }
   }
 
-  return files.sort();
+  const sorted = files.sort();
+  const folded = new Set();
+  for (const file of sorted) {
+    const key = file.toLowerCase();
+    assert.ok(!folded.has(key), `generated HTML route has a case-insensitive collision: ${file}`);
+    folded.add(key);
+  }
+  return sorted;
 }
 
 async function generatedDocuments() {
   const documents = [];
+  const siteBase = await canonicalSiteBase();
 
   for (const route of await recursiveHtmlFiles(distRoot)) {
     const candidate = path.join(distRoot, ...route.split('/'));
     const filename = await canonicalExistingFile(candidate, `generated document ${route}`);
     const raw = await readFile(filename, 'utf8');
+    const $ = load(raw, { sourceCodeLocationInfo: true });
+    documentSiteBase(exactlyOne($('nav[aria-label="Primary"] .site-name[href]'), `${route} site identity link`).attr('href'), siteBase);
     documents.push({
       route,
       filename,
       raw,
-      $: load(raw, { sourceCodeLocationInfo: true }),
+      $,
+      siteBase,
     });
   }
 
   return documents;
 }
 
-function routeUrl(route) {
-  if (route === 'index.html') return '/';
-  if (route.endsWith('/index.html')) return `/${route.slice(0, -'index.html'.length)}`;
-  return `/${route}`;
+function routeUrl(route, siteBase = '/') {
+  if (route === 'index.html') return expandSiteBase('/', siteBase);
+  if (route.endsWith('/index.html')) return expandSiteBase(`/${route.slice(0, -'index.html'.length)}`, siteBase);
+  return expandSiteBase(`/${route}`, siteBase);
 }
 
 function assertCanonicalContainment(canonicalRoot, canonicalTarget, context) {
@@ -332,10 +335,10 @@ async function canonicalExistingFile(target, context) {
   return canonicalTarget;
 }
 
-async function assertInternalTargetExists(targetUrl, context) {
+async function assertInternalTargetExists(targetUrl, context, siteBase) {
   let decodedPath;
   try {
-    decodedPath = decodeURIComponent(targetUrl.pathname);
+    decodedPath = stripSiteBase(decodeURIComponent(targetUrl.pathname), siteBase);
   } catch {
     assert.fail(`${context} contains an invalid percent-encoded path`);
   }
@@ -348,8 +351,28 @@ async function assertInternalTargetExists(targetUrl, context) {
   return canonicalExistingFile(target, `${context} (${relativePath})`);
 }
 
-test('fresh build emits exactly the approved HTML route set', async () => {
-  assert.deepEqual(await recursiveHtmlFiles(distRoot), generatedRoutes);
+async function assertFragmentTarget(targetFile, targetUrl, context) {
+  if (targetUrl.hash === '') return;
+  let targetId;
+  try { targetId = decodeURIComponent(targetUrl.hash.slice(1)); } catch { assert.fail(`${context} contains an invalid encoded fragment`); }
+  const targetDocument = load(await readFile(targetFile, 'utf8'));
+  const matches = targetDocument('[id]').filter((_, element) => targetDocument(element).attr('id') === targetId);
+  assert.equal(matches.length, 1, `${context} fragment ${targetUrl.hash} must target one exact id`);
+}
+
+test('fresh build emits exactly the canonical and discovered HTML route set', async () => {
+  assert.deepEqual(await recursiveHtmlFiles(distRoot), await expectedGeneratedRoutes());
+});
+
+test('generated HTML is newer than every public build input', async () => {
+  const buildInputs = await inventoryBuildInputs(projectRoot, {
+    realpath, lstat,
+    readdir: (directory) => readdir(directory),
+  });
+  const outputStats = await Promise.all((await recursiveHtmlFiles(distRoot)).map((file) => stat(path.join(distRoot, ...file.split('/')))));
+  const newestInput = Math.max(...buildInputs.map(({ mtimeMs }) => mtimeMs));
+  const oldestOutput = Math.min(...outputStats.map(({ mtimeMs }) => mtimeMs));
+  assert.ok(oldestOutput >= newestInput, `dist HTML is stale: newest input ${newestInput}, oldest output ${oldestOutput}`);
 });
 
 test('every generated document has exact identity, metadata, landmarks, and keyboard entry', async () => {
@@ -433,10 +456,11 @@ test('every main landmark follows an unskipped semantic heading hierarchy', asyn
 });
 
 test('active navigation matches each generated route and remains scoped to primary navigation', async () => {
-  for (const { route, $ } of await generatedDocuments()) {
+  const repository = await loadSiteRepository();
+  for (const { route, $, siteBase } of await generatedDocuments()) {
     const nav = exactlyOne($('nav[aria-label="Primary"]'), `${route} primary navigation`);
     const currentElements = $('[aria-current]');
-    const expected = expectedCurrentNavigation.get(route);
+    const expected = expectedCurrentNavigation(repository, route, siteBase);
 
     if (expected === null) {
       assert.equal(currentElements.length, 0, `${route} must not mark a navigation link current`);
@@ -455,11 +479,9 @@ test('active navigation matches each generated route and remains scoped to prima
   }
 });
 
-test('all real internal anchors resolve within the generated site and same-page fragments target exact ids', async () => {
-  const origin = 'https://generated-site.invalid';
-
-  for (const { route, filename, $ } of await generatedDocuments()) {
-    const baseUrl = new URL(routeUrl(route), origin);
+test('all real internal anchors resolve within the generated site and fragments target exact ids', async () => {
+  for (const { route, $, siteBase } of await generatedDocuments()) {
+    const baseUrl = new URL(routeUrl(route, siteBase), generatedOrigin);
 
     for (const anchor of $('a').toArray()) {
       const href = $(anchor).attr('href');
@@ -467,15 +489,10 @@ test('all real internal anchors resolve within the generated site and same-page 
       if (/^mailto:/i.test(href)) continue;
 
       const targetUrl = new URL(href, baseUrl);
-      if (/^https?:/i.test(targetUrl.protocol) && targetUrl.origin !== origin) continue;
-      assert.equal(targetUrl.origin, origin, `${route} anchor ${href} uses an unsupported internal scheme`);
-      const targetFile = await assertInternalTargetExists(targetUrl, `${route} anchor ${href}`);
-
-      if (targetFile === filename && targetUrl.hash !== '') {
-        const targetId = decodeURIComponent(targetUrl.hash.slice(1));
-        const matches = $('[id]').filter((_, element) => $(element).attr('id') === targetId);
-        assert.equal(matches.length, 1, `${route} fragment ${targetUrl.hash} must target one exact id`);
-      }
+      if (/^https?:/i.test(targetUrl.protocol) && targetUrl.origin !== generatedOrigin) continue;
+      assert.equal(targetUrl.origin, generatedOrigin, `${route} anchor ${href} uses an unsupported internal scheme`);
+      const targetFile = await assertInternalTargetExists(targetUrl, `${route} anchor ${href}`, siteBase);
+      await assertFragmentTarget(targetFile, targetUrl, `${route} anchor ${href}`);
     }
   }
 });
@@ -483,10 +500,8 @@ test('all real internal anchors resolve within the generated site and same-page 
 test('all real images are accessible and the site emits each approved image source exactly once', async () => {
   const approvedImages = listStaticAssetRoutes(await loadSiteRepository()).map(({ pathname }) => pathname).sort();
   const observedSources = [];
-  const origin = 'https://generated-site.invalid';
-
-  for (const { route, $ } of await generatedDocuments()) {
-    const baseUrl = new URL(routeUrl(route), origin);
+  for (const { route, $, siteBase } of await generatedDocuments()) {
+    const baseUrl = new URL(routeUrl(route, siteBase), generatedOrigin);
 
     for (const image of $('img').toArray()) {
       const element = $(image);
@@ -494,11 +509,11 @@ test('all real images are accessible and the site emits each approved image sour
       const source = element.attr('src') ?? '';
       assert.ok(alt.length >= 20, `${route} image alt must contain at least 20 trimmed characters`);
       assert.notEqual(source, '', `${route} image src must not be empty`);
-      observedSources.push(source);
+      observedSources.push(stripSiteBase(new URL(source, baseUrl).pathname, siteBase));
 
       const targetUrl = new URL(source, baseUrl);
-      if (targetUrl.origin === origin) {
-        await assertInternalTargetExists(targetUrl, `${route} image ${source}`);
+      if (targetUrl.origin === generatedOrigin) {
+        await assertInternalTargetExists(targetUrl, `${route} image ${source}`, siteBase);
       }
     }
   }
@@ -548,10 +563,44 @@ test('raw and decoded generated output exclude private identifiers, unsupported 
     decodedAttributes.forEach((value, index) => {
       assertNoAbsoluteLocalPath(value, `${route} decoded attribute ${index + 1}`);
     });
+    assert.doesNotMatch(raw, /<!--\s*editor:/i, `${route} raw HTML must exclude editor markers`);
+    assert.equal($('[data-block-id], [data-section-kind], [data-editor-id]').length, 0, `${route} DOM must exclude editor attributes`);
+  }
+});
+
+test('all Git-tracked text is privacy-scanned while public-copy terminology excludes historical specifications only by scope', async () => {
+  const textExtensions = new Set(['.astro', '.css', '.gitignore', '.js', '.json', '.md', '.mjs', '.py', '.ts', '.txt', '.yaml', '.yml']);
+  const binaryExtensions = new Set(['.png']);
+  const tracked = execFileSync('git', ['-c', `safe.directory=${projectRoot}`, 'ls-files', '-z'], {
+    cwd: projectRoot,
+    encoding: 'utf8',
+  }).split('\0').filter(Boolean);
+  const publicTerminology = /(?:\bWP\d+\b|\bFig\.\s*\d*|\bMy Contribution\b)/i;
+  const surfaces = await trackedTextSurfaces(tracked, {
+    readIndex: (relativePath) => execFileSync('git', ['-c', `safe.directory=${projectRoot}`, 'show', `:${relativePath}`], { cwd: projectRoot, encoding: 'utf8' }),
+    readWorking: async (relativePath) => {
+      try { return await readFile(path.join(projectRoot, ...relativePath.split('/')), 'utf8'); }
+      catch (error) { if (error?.code === 'ENOENT') return undefined; throw error; }
+    },
+  });
+  for (const { relativePath, source: rawSource, kind } of surfaces) {
+    const extension = path.extname(relativePath);
+    if (binaryExtensions.has(extension)) continue;
+    assert.ok(relativePath === '.gitignore' || textExtensions.has(extension), `unclassified tracked file: ${relativePath}`);
+    const source = rawSource.normalize('NFKC');
+    assert.doesNotMatch(source, privateIdentifierPattern, `${relativePath} ${kind} bytes must exclude private identifiers`);
+    assert.doesNotMatch(source, nonPublicNameSentinelPattern, `${relativePath} ${kind} bytes must exclude private names`);
+    assertNoAbsoluteLocalPath(source, `${relativePath} ${kind} bytes`);
+    if (relativePath.startsWith('src/content/')) assert.doesNotMatch(source, publicTerminology, `${relativePath} ${kind} bytes must exclude internal public-copy terminology`);
+  }
+
+  for (const { route, raw } of await generatedDocuments()) {
+    assert.doesNotMatch(raw.normalize('NFKC'), publicTerminology, `${route} must exclude internal public-copy terminology`);
   }
 });
 
 test('404 output exposes the exact not-found contract without a current primary-navigation link', async () => {
+  const siteBase = await canonicalSiteBase();
   const filename = path.join(distRoot, '404.html');
   assert.ok(existsSync(filename), 'expected generated document 404.html');
   const raw = await readFile(filename, 'utf8');
@@ -576,7 +625,7 @@ test('404 output exposes the exact not-found contract without a current primary-
   );
 
   const returnLinks = main.find('a').filter((_, element) => (
-    $(element).attr('href') === '/'
+    $(element).attr('href') === siteBase
       && visibleText($(element)) === 'Return to About'
   ));
   exactlyOne(returnLinks, '404 return link');

@@ -73,3 +73,18 @@ test('project image blocks still route only through the Task 3 confined asset ma
   const $ = load(html);
   assert.equal($('img').attr('src'), '/repo/assets/projects/safe-link-fixture/result.png');
 });
+
+test('image blocks accept only one exact image with an optional following caption', () => {
+  const accepted = parseProjectFile(projectWith('![A confined result](./images/result.png)\nA concise evidence caption.', 'image'));
+  assert.doesNotThrow(() => validateProject(accepted));
+  const acceptedHtml = renderSafeBlock(accepted.sections[0].blocks[0], { projectSlug: 'safe-link-fixture' });
+  assert.equal(load(acceptedHtml)('figcaption').text(), 'A concise evidence caption.');
+
+  const trailing = parseProjectFile(projectWith('![A confined result](./images/result.png) trailing prose', 'image'));
+  assert.throws(() => validateProject(trailing), /image block syntax/i);
+
+  const malformedHtml = renderSafeBlock(trailing.sections[0].blocks[0], { projectSlug: 'safe-link-fixture' });
+  const $ = load(malformedHtml);
+  assert.equal($('figure, img').length, 0);
+  assert.match($('pre code').text(), /trailing prose/);
+});

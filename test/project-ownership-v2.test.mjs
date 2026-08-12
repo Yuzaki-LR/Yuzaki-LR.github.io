@@ -29,7 +29,7 @@ test('individual projects expose no contribution surface in source, semantics, o
     }
     assert.doesNotMatch(record.source, /kind="contribution"|^contributions:/m);
     const $ = load(await readBuiltRoute(`/projects/${slug}/`));
-    assert.equal($('[data-section-kind="contribution"]').length, 0);
+    assert.equal($('.contribution-section').length, 0);
   }
 });
 
@@ -44,7 +44,7 @@ test('team project has exactly one protected contribution and no internal code',
   assert.equal((record.source.match(/kind="contribution"/g) ?? []).length, 1);
   assert.doesNotMatch(record.source, /\bWP\d+[A-Z]?\b/);
   const $ = load(await readBuiltRoute('/projects/future-ocean-habitat/'));
-  const contribution = $('[data-section-kind="contribution"]');
+  const contribution = $('.contribution-section');
   assert.equal(contribution.length, 1);
   assert.equal(contribution.find('h2').text().trim(), 'My Role and Contribution');
   assert.notEqual(contribution.clone().children('h2').remove().end().text().trim(), '');

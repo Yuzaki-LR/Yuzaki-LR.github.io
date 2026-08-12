@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { CONTRIBUTION_TITLE, EDITOR_ID, MANUSCRIPT_STATUS, PROJECT_KINDS } from './types.mjs';
+import { parseImageBlock } from './image-block.mjs';
 
 const hex = /^#[0-9a-f]{6}$/i;
 const safePath = /^(?![\\/]|.*(?:^|[\\/])\.\.(?:[\\/]|$))[a-zA-Z0-9][a-zA-Z0-9._/-]*$/;
@@ -29,7 +30,9 @@ function checked(schema, value, message) { const result = schema.safeParse(value
 function assertBlock(block) {
   checked(blockSchema, block, 'block contract is invalid');
   if (block.type === 'image') {
-    const image = (block.markdown ?? '').match(/^!\[[^\]]*\]\(([^)]+)\)/m)?.[1];
+    const parsed = parseImageBlock(block.markdown);
+    if (!parsed) fail('image block syntax is invalid');
+    const image = parsed.source;
     if (!image || (!safePath.test(image) && !/^\.\/images\/[a-zA-Z0-9][a-zA-Z0-9_-]*\.png$/.test(image))) fail('image path must be a safe relative path');
   }
 }

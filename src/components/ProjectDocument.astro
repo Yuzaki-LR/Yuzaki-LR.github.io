@@ -18,7 +18,7 @@ const sections = project.sections.filter((section) => !section.hidden && section
   <div><dt>Methods and tools</dt><dd>{data.methods.join(' · ')}</dd></div>
 </dl>
 {sections.map((section) => (
-  <section data-section-kind={section.kind}>
+  <section class:list={['project-section', { 'contribution-section': section.kind === 'contribution' }]}>
     <h2>{section.title}</h2>
     <ContentBlocks blocks={section.blocks} projectSlug={project.slug} base={base} />
   </section>

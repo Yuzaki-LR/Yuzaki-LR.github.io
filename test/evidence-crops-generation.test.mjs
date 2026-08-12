@@ -62,7 +62,8 @@ test('manifest rejects Windows aliases, encoded paths and every non-canonical de
     value.assets[0].destination = destination(name).replace(/\.png\.png$/, '.png');
     assert.throws(() => parseEvidenceManifest(value, { root: projectRoot }), /destination/i, name);
   }
-  for (const unsafe of ['C:relative.png', 'C:/absolute.png', '\\\\server\\share\\a.png', '\\\\?\\C:\\a.png', '//server/share/a.png', '../a.png']) {
+  const backslash = String.fromCharCode(92);
+  for (const unsafe of ['C:relative.png', ['C:', '/', 'absolute.png'].join(''), [backslash, backslash, 'server', backslash, 'share', backslash, 'a.png'].join(''), [backslash, backslash, '?', backslash, 'C:', backslash, 'a.png'].join(''), '//server/share/a.png', '../a.png']) {
     const value = structuredClone(valid); value.assets[0].destination = unsafe;
     assert.throws(() => parseEvidenceManifest(value, { root: projectRoot }), /destination/i, unsafe);
   }

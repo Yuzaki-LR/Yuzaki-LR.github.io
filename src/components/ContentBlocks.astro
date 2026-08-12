@@ -1,10 +1,32 @@
 ---
 import { renderSafeBlock } from '../lib/content/safe-render.mjs';
+import { toPublicAssetHref } from '../lib/content/asset-routes.mjs';
+import { parseImageBlock } from '../lib/content/image-block.mjs';
 
 interface Block { id: string; type: string; hidden: boolean; markdown?: string; raw?: string }
 interface Props { blocks: Block[]; projectSlug: string; base?: string }
 const { blocks, projectSlug, base = '/' } = Astro.props;
 const visible = blocks.filter((block) => !block.hidden);
+const groups: Array<{ kind: 'content' | 'evidence'; blocks: Block[] }> = [];
+for (const block of visible) {
+  const kind = block.type === 'image' ? 'evidence' : 'content';
+  const previous = groups.at(-1);
+  if (previous?.kind === kind) previous.blocks.push(block);
+  else groups.push({ kind, blocks: [block] });
+}
+function imageParts(block: Block) {
+  const parsed = parseImageBlock(block.markdown);
+  if (!parsed) return null;
+  return {
+    alt: parsed.alt,
+    src: toPublicAssetHref({ kind: 'project', slug: projectSlug, relativeSource: parsed.source, base }),
+    caption: parsed.caption?.replace(/^Fig\.\s*/i, ''),
+  };
+}
 ---
 
-{visible.map((block) => <div class="content-block" data-block-id={block.id}><Fragment set:html={renderSafeBlock(block, { projectSlug, base })} /></div>)}
+{groups.map((group) => {
+  if (group.kind === 'content') return group.blocks.map((block) => <div class="content-block"><Fragment set:html={renderSafeBlock(block, { projectSlug, base })} /></div>);
+  const images = group.blocks.map(imageParts).filter((image) => image !== null);
+  return images.length ? <div class="evidence-grid">{images.map((image) => <figure><a class="evidence-link" href={image.src}><img src={image.src} alt={image.alt} loading="lazy" decoding="async" /></a>{image.caption && <figcaption>{image.caption}</figcaption>}</figure>)}</div> : null;
+})}

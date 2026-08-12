@@ -26,6 +26,13 @@ function customProperties(css) {
   );
 }
 
+function inlineCustomProperties(style) {
+  return new Map(
+    [...style.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+)(?:;|$)/gi)]
+      .map(([, name, value]) => [name, value.trim()]),
+  );
+}
+
 function resolveColor(value, properties) {
   const variable = value.match(/^var\((--[a-z0-9-]+)\)$/i);
   const resolved = variable ? properties.get(variable[1]) : value;
@@ -57,9 +64,14 @@ test('focus indicator has at least 3:1 contrast on white, surface, and footer ba
   const css = await readFile(cssPath, 'utf8');
   const properties = customProperties(css);
   const html = await readDist('index.html');
-  const focus = html.match(/--focus:(#[0-9a-f]{6})/i)?.[1];
-  assert.ok(focus, 'built page must emit the validated focus token');
-  properties.set('--focus', focus);
+  const bodyStyle = html.match(/<body\s+style="([^"]+)"/i)?.[1];
+  assert.ok(bodyStyle, 'built page must emit canonical theme tokens');
+  const emittedTheme = inlineCustomProperties(bodyStyle);
+  for (const name of ['--background', '--surface', '--text', '--accent', '--focus']) {
+    const value = emittedTheme.get(name);
+    assert.ok(value, `built page must emit ${name}`);
+    properties.set(name, value);
+  }
   const focusRule = ruleBody(
     css,
     'a:focus-visible\\s*,\\s*button:focus-visible\\s*,\\s*\\[tabindex\\]:focus-visible',

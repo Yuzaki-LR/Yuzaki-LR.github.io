@@ -3,6 +3,7 @@ import remarkGfm from 'remark-gfm';
 import remarkParse from 'remark-parse';
 import { toPublicAssetHref } from './asset-routes.mjs';
 import { internalHref } from './render-model.mjs';
+import { parseImageBlock } from './image-block.mjs';
 
 const parser = unified().use(remarkParse).use(remarkGfm);
 const escapeHtml = (value = '') => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
@@ -55,11 +56,10 @@ export function renderSafeMarkdown(markdown, { base = '/' } = {}) {
 export function renderSafeBlock(block, { projectSlug, base = '/' } = {}) {
   if (block.type === 'advanced') return `<pre><code>${escapeHtml(block.raw)}</code></pre>`;
   if (block.type === 'image') {
-    const match = block.markdown.match(/^!\[([^\]]*)\]\(([^)]+)\)\s*(?:\n+(.+))?$/s);
-    if (!match || !projectSlug) return `<pre><code>${escapeHtml(block.markdown)}</code></pre>`;
-    const src = toPublicAssetHref({ kind: 'project', slug: projectSlug, relativeSource: match[2], base });
-    const caption = match[3]?.trim();
-    return `<figure><img src="${escapeHtml(src)}" alt="${escapeHtml(match[1])}" loading="lazy" decoding="async">${caption ? `<figcaption>${escapeHtml(caption.replace(/^Fig\.\s*/i, ''))}</figcaption>` : ''}</figure>`;
+    const image = parseImageBlock(block.markdown);
+    if (!image || !projectSlug) return `<pre><code>${escapeHtml(block.markdown)}</code></pre>`;
+    const src = toPublicAssetHref({ kind: 'project', slug: projectSlug, relativeSource: image.source, base });
+    return `<figure><img src="${escapeHtml(src)}" alt="${escapeHtml(image.alt)}" loading="lazy" decoding="async">${image.caption ? `<figcaption>${escapeHtml(image.caption.replace(/^Fig\.\s*/i, ''))}</figcaption>` : ''}</figure>`;
   }
   return renderSafeMarkdown(block.markdown, { base });
 }

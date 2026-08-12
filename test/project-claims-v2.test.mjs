@@ -46,6 +46,18 @@ function normalizedClaimText(text) {
   return text.normalize('NFKC').replace(/\s+/g, ' ').trim();
 }
 
+function domBlockForId($, project, blockId) {
+  const visibleSections = project.sections.filter((section) => !section.hidden && section.blocks.some((block) => !block.hidden));
+  const sectionIndex = visibleSections.findIndex(({ blocks }) => blocks.some(({ id }) => id === blockId));
+  if (sectionIndex < 0) return null;
+  const visibleBlocks = visibleSections[sectionIndex].blocks.filter(({ hidden }) => !hidden);
+  const blockIndex = visibleBlocks.findIndex(({ id }) => id === blockId);
+  if (blockIndex < 0 || visibleBlocks[blockIndex].type === 'image') return null;
+  const contentIndex = visibleBlocks.slice(0, blockIndex).filter(({ type }) => type !== 'image').length;
+  const block = $('main > .project-section').eq(sectionIndex).children('.content-block').eq(contentIndex);
+  return block.length === 1 ? block : null;
+}
+
 function maskRegisteredClaimFragments(text, claims) {
   const normalizedText = normalizedClaimText(text);
   const fragments = claims.flatMap(({ permittedWording, requiredQualifiers, conclusionAnchors = [] }) => [permittedWording, ...requiredQualifiers, ...conclusionAnchors]).map(normalizedClaimText).sort((left, right) => right.length - left.length);
@@ -100,12 +112,12 @@ test('each claim is satisfied independently in its registered project source and
     const block = project.sections.flatMap(({ blocks }) => blocks).find(({ id }) => id === claim.publicBlock);
     assert.ok(block && !block.hidden, `${claim.claimId} source block`);
     const sourceText = load(renderSafeBlock(block, { projectSlug: claim.project })).root().text();
-    const builtBlock = $(`[data-block-id="${claim.publicBlock}"]`);
-    const domText = builtBlock.length ? builtBlock.text() : '';
+    const builtBlock = domBlockForId($, project, claim.publicBlock);
+    const domText = builtBlock?.text() ?? '';
     assertClaimSurfaceAgreement(claim, sourceText, domText);
     for (const [otherSlug, other] of surfaces) {
       if (otherSlug === claim.project) continue;
-      assert.equal(other.$(`[data-block-id="${claim.publicBlock}"]`).length, 0, `${claim.claimId} must not be answered by ${otherSlug}`);
+      assert.equal(domBlockForId(other.$, other.project, claim.publicBlock), null, `${claim.claimId} must not be answered by ${otherSlug}`);
     }
   }
 });
@@ -120,7 +132,7 @@ test('every public numeric or conclusion block has a registered claim', async ()
   for (const slug of slugs) {
     const project = await loadProjectFixture(slug);
     const $ = load(await readBuiltRoute(`/projects/${slug}/`));
-    assert.deepEqual(unregisteredClaimFragments(project, claims, (blockId) => normalizedClaimText($(`[data-block-id="${blockId}"]`).text())), []);
+    assert.deepEqual(unregisteredClaimFragments(project, claims, (blockId) => normalizedClaimText(domBlockForId($, project, blockId)?.text() ?? '')), []);
   }
 });
 
@@ -185,7 +197,7 @@ test('registered qualifiers drive special boundaries and unsupported status voca
     const claim = byId.get(claimId);
     const { project, $ } = await projectSurfaces(claim.project);
     const block = project.sections.flatMap(({ blocks }) => blocks).find(({ id }) => id === claim.publicBlock);
-    const dom = $(`[data-block-id="${claim.publicBlock}"]`).text();
+    const dom = domBlockForId($, project, claim.publicBlock)?.text() ?? '';
     const sourceText = load(renderSafeBlock(block, { projectSlug: claim.project })).root().text();
     assert.match(sourceText, literalPattern(claim.publicAnchor));
     for (const qualifier of claim.requiredQualifiers) assert.match(dom, literalPattern(qualifier));

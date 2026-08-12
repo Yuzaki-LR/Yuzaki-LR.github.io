@@ -8,6 +8,7 @@ import { parseProjectFile } from './project-file.mjs';
 import { parseResearchFile } from './research-file.mjs';
 import { validatePage, validateProject, validateResearch, validateSite } from './schema.mjs';
 import { parseAssetName } from './asset-routes.mjs';
+import { parseImageBlock } from './image-block.mjs';
 
 const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 const slugPattern = /^[a-z][a-z0-9-]{0,62}$/;
@@ -42,7 +43,7 @@ async function regularFile(root, relative, message) {
 function imageSources(document) {
   return document.sections.flatMap((section) => section.blocks)
     .filter((block) => block.type === 'image')
-    .map((block) => (block.markdown.match(/^!\[[^\]]*\]\(([^)]+)\)/m)?.[1]));
+    .map((block) => parseImageBlock(block.markdown)?.source);
 }
 async function loadProjectImages(root, slug, document) {
   const images = [];
