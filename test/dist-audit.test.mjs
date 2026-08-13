@@ -569,7 +569,7 @@ test('raw and decoded generated output exclude private identifiers, unsupported 
 });
 
 test('all Git-tracked text is privacy-scanned while public-copy terminology excludes historical specifications only by scope', async () => {
-  const textExtensions = new Set(['.astro', '.css', '.gitignore', '.js', '.json', '.md', '.mjs', '.py', '.ts', '.txt', '.yaml', '.yml']);
+  const textExtensions = new Set(['.astro', '.css', '.gitignore', '.html', '.js', '.json', '.md', '.mjs', '.py', '.ts', '.txt', '.yaml', '.yml']);
   const binaryExtensions = new Set(['.png']);
   const tracked = execFileSync('git', ['-c', `safe.directory=${projectRoot}`, 'ls-files', '-z'], {
     cwd: projectRoot,

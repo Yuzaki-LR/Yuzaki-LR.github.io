@@ -11,6 +11,7 @@ const textExtensions = new Set([
   '.astro',
   '.css',
   '.gitignore',
+  '.html',
   '.js',
   '.json',
   '.md',

@@ -179,3 +179,29 @@ export async function withAstroBuildLock(run) {
     await release();
   }
 }
+
+export async function createTestWorkspace() {
+  const testsRoot = path.join(projectRoot, '.local-editor', 'runtime', 'tests');
+  await mkdir(testsRoot, { recursive: true });
+  const parent = await mkdtemp(path.join(testsRoot, 'task7-'));
+  const sentinel = path.join(parent, '.editor-test-sentinel');
+  const root = path.join(parent, 'project');
+  await writeFile(sentinel, 'editor-test-workspace-v1\n');
+  await mkdir(root);
+  await cp(path.join(projectRoot, 'src', 'content'), path.join(root, 'src', 'content'), { recursive: true });
+  let cleaned = false;
+  return {
+    parent,
+    root,
+    sentinel,
+    cleanup: async () => {
+      if (cleaned) return;
+      const expectedParent = await realpath(parent);
+      const expectedTests = await realpath(testsRoot);
+      if (!expectedParent.startsWith(`${expectedTests}${path.sep}`)) throw new Error('editor test workspace escapes owned root');
+      if (await readFile(sentinel, 'utf8') !== 'editor-test-workspace-v1\n') throw new Error('editor test workspace sentinel changed');
+      cleaned = true;
+      await rm(expectedParent, { recursive: true, force: true });
+    },
+  };
+}
