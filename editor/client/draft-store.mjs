@@ -136,6 +136,11 @@ function fieldContract(state,path){
 }
 function validatedFieldValue(contract,value){switch(contract.kind){case'site-scalar':if(value===null)return null;if(typeof value!=='string')fail('资料字段无效');return value;case'colour':if(typeof value!=='string'||!/^#[0-9a-f]{6}$/i.test(value))fail('颜色无效');return value.toLowerCase();case'avatar-mode':if(!['initials','hidden','image'].includes(value))fail('头像模式无效');return value;case'avatar-src':nonEmpty(value,'头像路径');return value;case'avatar-alt':nonEmpty(value,'头像说明');return value;case'url':return safeOptionalUrl(value);case'url-required':return safeOptionalUrl(value)??fail('链接地址不能为空');case'nonempty':return nonEmpty(value);case'boolean':if(typeof value!=='boolean')fail('布尔字段无效');return value;case'integer':if(!Number.isInteger(value)||value<0)fail('顺序无效');return value;case'optional-string':if(value===undefined||value===null||value==='')return undefined;if(typeof value!=='string')fail('字段无效');return value;case'string':if(typeof value!=='string')fail('字段无效');return value;default:fail('编辑路径不允许');}}
 function applyFieldSet(state,action){const contract=fieldContract(state,action.path),value=validatedFieldValue(contract,action.value);if(contract.kind==='avatar-mode'){const avatar=value==='image'?{...state.site.avatar,mode:value}:{mode:value};return updateOwn(state,['site','avatar'],()=>avatar);}return updateOwn(state,action.path,()=>clone(value));}
+function applyAvatarTransition(state,action){
+  if(action.mode==='image')return updateOwn(state,['site','avatar'],()=>({mode:'image',src:action.src,alt:action.alt}));
+  if(action.mode==='initials'||action.mode==='hidden')return updateOwn(state,['site','avatar'],()=>({mode:action.mode}));
+  fail('头像模式无效');
+}
 
 function collectionContext(state,path){
   assertPath(path);if(path.length===1&&path[0]==='research')return{kind:'research',items:state.research};if(path.length===1&&path[0]==='images')return{kind:'images',items:state.images};if(path.length===2&&path[0]==='site'&&path[1]==='interests')return{kind:'interests',items:state.site.interests};if(path.length===3&&path[0]==='site'&&path[1]==='links'&&path[2]==='custom')return{kind:'links',items:state.site.links.custom};
@@ -189,11 +194,12 @@ function applyProjectAction(state,action){
     return{...state,projects:result,pendingKindChange:null};
   }
   if(action.type==='project/change-slug'){const candidate=reserveSlug(action.candidate,projects.filter((_,position)=>position!==index).map(project=>project.slug));return{...state,pendingSlugChange:{slug:action.slug,candidate,diff:{from:action.slug,to:candidate}}};}
-  if(action.type==='project/confirm-slug-change'){const pending=state.pendingSlugChange;if(pending?.slug!==action.slug)fail('需要再次确认项目网址');const result=projects.map(clone);result[index].slug=pending.candidate;delete result[index].document.slug;return{...state,projects:result,pendingSlugChange:null};}
+  if(action.type==='project/confirm-slug-change'){const pending=state.pendingSlugChange;if(pending?.slug!==action.slug)fail('需要再次确认项目网址');const result=projects.map(clone);result[index].slug=pending.candidate;delete result[index].document.slug;const images=(state.images??[]).map(image=>image.kind==='project'&&image.slug===action.slug?{...clone(image),slug:pending.candidate,destination:`projects/${pending.candidate}/images/${image.name}`}:clone(image));return{...state,projects:result,images,pendingSlugChange:null};}
   fail('不支持的项目操作');
 }
 
 const ACTION_SCHEMAS=new Map([
+  ['avatar/transition',{allowed:['type','mode','src','alt'],required:['type','mode']}],
   ['field/set',{allowed:['type','path','value'],required:['type','path','value']}],
   ['item/add',{allowed:['type','path','item'],required:['type','path','item']}],
   ['item/copy',{allowed:['type','path','id','index'],required:['type','path']}],
@@ -208,11 +214,11 @@ const ACTION_SCHEMAS=new Map([
   ['project/change-slug',{allowed:['type','slug','candidate'],required:['type','slug','candidate']}],
   ['project/confirm-slug-change',{allowed:['type','slug'],required:['type','slug']}],
 ]);
-function assertAction(action){assertPlain(action,'编辑操作无效');if(!OWN(action,'type')||typeof action.type!=='string')fail('编辑操作无效');const schema=ACTION_SCHEMAS.get(action.type);if(!schema)fail('不支持的编辑操作');assertKeys(action,schema.allowed,schema.required,'编辑操作属性无效');}
+function assertAction(action){assertPlain(action,'编辑操作无效');if(!OWN(action,'type')||typeof action.type!=='string')fail('编辑操作无效');const schema=ACTION_SCHEMAS.get(action.type);if(!schema)fail('不支持的编辑操作');if(action.type==='avatar/transition'){const image=action.mode==='image';assertKeys(action,image?schema.allowed:['type','mode'],image?['type','mode','src','alt']:['type','mode'],'头像操作属性无效');return;}assertKeys(action,schema.allowed,schema.required,'编辑操作属性无效');}
 
 export function createDraftStore(bootstrap){
   const clean=withoutRuntime(bootstrap);assertBaseStructure(clean,{allowInvalidOwnership:true});let initial=recalculate(clean),state=clone(initial);const listeners=new Set();
-  return{getState:()=>clone(state),subscribe(listener){if(typeof listener!=='function')fail('订阅函数无效');listeners.add(listener);return()=>listeners.delete(listener);},dispatch(action){assertAction(action);let next;if(action.type==='field/set')next=applyFieldSet(state,action);else if(action.type.startsWith('item/'))next=applyItemAction(state,action);else next=applyProjectAction(state,action);assertBaseStructure(next);state=recalculate(next);for(const listener of listeners)listener(clone(state));return clone(state);},isDirty:()=>JSON.stringify(state)!==JSON.stringify(initial),reset(){state=clone(initial);for(const listener of listeners)listener(clone(state));return clone(state);}};
+  return{getState:()=>clone(state),subscribe(listener){if(typeof listener!=='function')fail('订阅函数无效');listeners.add(listener);return()=>listeners.delete(listener);},dispatch(action){assertAction(action);let next;if(action.type==='field/set')next=applyFieldSet(state,action);else if(action.type==='avatar/transition')next=applyAvatarTransition(state,action);else if(action.type.startsWith('item/'))next=applyItemAction(state,action);else next=applyProjectAction(state,action);assertBaseStructure(next);state=recalculate(next);for(const listener of listeners)listener(clone(state));return clone(state);},isDirty:()=>JSON.stringify(state)!==JSON.stringify(initial),reset(){state=clone(initial);for(const listener of listeners)listener(clone(state));return clone(state);}};
 }
 export function hasUnsavedNavigationWarning(store){return Boolean(store?.isDirty());}
 

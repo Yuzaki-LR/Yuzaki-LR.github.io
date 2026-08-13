@@ -23,6 +23,8 @@ const textExtensions = new Set([
   '.yml',
 ]);
 const binaryExtensions = new Set(['.png']);
+const approvedBinaryPaths = new Set(['editor/test/fixtures/oriented.jpg', 'editor/test/fixtures/corrupt.tif']);
+function approvedBinaryPath(relativePath){return approvedBinaryPaths.has(relativePath);}
 
 const approvedTitlePhraseOracles = new Set([
   'Computer Vision',
@@ -71,7 +73,7 @@ function scanIndexedAndWorkingTexts({ paths = trackedPaths(), indexText = (relat
   const violations = [];
   for (const relativePath of paths) {
     const extension = path.extname(relativePath);
-    if (binaryExtensions.has(extension)) continue;
+    if (binaryExtensions.has(extension) || approvedBinaryPath(relativePath)) continue;
     if (relativePath !== '.gitignore' && !textExtensions.has(extension)) { unclassified.push(relativePath); continue; }
     const indexed = indexText(relativePath);
     violations.push(...privacyViolations(`${relativePath} (index)`, indexed));
@@ -109,10 +111,21 @@ test('privacy scan retains an index-only tracked source when its working-tree fi
 test('repository privacy scan classifies every tracked source, test, doc, workflow, and config file', () => {
   const textPathSentinel = ['docs', 'sentinel.md'].join('/');
   const binaryPathSentinel = ['public', 'sentinel.png'].join('/');
+  const jpegFixtureSentinel = ['editor', 'test', 'fixtures', 'sentinel.jpg'].join('/');
+  const tiffFixtureSentinel = ['editor', 'test', 'fixtures', 'sentinel.tif'].join('/');
   const unclassifiedPathSentinel = ['docs', 'sentinel.private'].join('/');
 
+  assert.deepEqual([...binaryExtensions].sort(), ['.png']);
+  assert.equal(typeof approvedBinaryPath, 'function');
+  assert.equal(approvedBinaryPath('editor/test/fixtures/oriented.jpg'), true);
+  assert.equal(approvedBinaryPath('editor/test/fixtures/corrupt.tif'), true);
+  assert.equal(approvedBinaryPath('future/sentinel.jpg'), false);
+  assert.equal(approvedBinaryPath('future/sentinel.tif'), false);
+  for (const future of ['future/sentinel.jpg', 'future/sentinel.tif']) assert.throws(() => scanIndexedAndWorkingTexts({paths:[future],indexText:()=>'',workingText:()=>undefined}), /unclassified tracked files/);
   assert.equal(textExtensions.has(path.extname(textPathSentinel)), true);
   assert.equal(binaryExtensions.has(path.extname(binaryPathSentinel)), true);
+  assert.equal(binaryExtensions.has(path.extname(jpegFixtureSentinel)), false);
+  assert.equal(binaryExtensions.has(path.extname(tiffFixtureSentinel)), false);
   assert.equal(textExtensions.has(path.extname(unclassifiedPathSentinel)), false);
   assert.equal(binaryExtensions.has(path.extname(unclassifiedPathSentinel)), false);
 });

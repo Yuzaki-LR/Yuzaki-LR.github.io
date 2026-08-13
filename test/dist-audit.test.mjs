@@ -16,6 +16,9 @@ const distRoot = path.join(projectRoot, 'dist');
 const privateIdentifierPattern = /\b\d{7}\b/u;
 const nonPublicNameSentinelPattern = new RegExp(['Private', 'Collaborator'].join('\\s+'), 'i');
 const generatedOrigin = 'https://generated-site.invalid';
+const trackedBinaryExtensions = new Set(['.png']);
+const approvedTrackedBinaryPaths = new Set(['editor/test/fixtures/oriented.jpg', 'editor/test/fixtures/corrupt.tif']);
+function approvedTrackedBinaryPath(relativePath){return approvedTrackedBinaryPaths.has(relativePath);}
 
 function routeFromHref(href, siteBase) {
   const url = new URL(href, generatedOrigin);
@@ -568,9 +571,17 @@ test('raw and decoded generated output exclude private identifiers, unsupported 
   }
 });
 
+test('tracked privacy audit classifies only approved binary fixture extensions', () => {
+  assert.deepEqual([...trackedBinaryExtensions].sort(), ['.png']);
+  assert.equal(typeof approvedTrackedBinaryPath, 'function');
+  assert.equal(approvedTrackedBinaryPath('editor/test/fixtures/oriented.jpg'), true);
+  assert.equal(approvedTrackedBinaryPath('editor/test/fixtures/corrupt.tif'), true);
+  assert.equal(approvedTrackedBinaryPath('future/sentinel.jpg'), false);
+  assert.equal(approvedTrackedBinaryPath('future/sentinel.tif'), false);
+});
+
 test('all Git-tracked text is privacy-scanned while public-copy terminology excludes historical specifications only by scope', async () => {
   const textExtensions = new Set(['.astro', '.css', '.gitignore', '.html', '.js', '.json', '.md', '.mjs', '.py', '.ts', '.txt', '.yaml', '.yml']);
-  const binaryExtensions = new Set(['.png']);
   const tracked = execFileSync('git', ['-c', `safe.directory=${projectRoot}`, 'ls-files', '-z'], {
     cwd: projectRoot,
     encoding: 'utf8',
@@ -585,7 +596,7 @@ test('all Git-tracked text is privacy-scanned while public-copy terminology excl
   });
   for (const { relativePath, source: rawSource, kind } of surfaces) {
     const extension = path.extname(relativePath);
-    if (binaryExtensions.has(extension)) continue;
+    if (trackedBinaryExtensions.has(extension) || approvedTrackedBinaryPath(relativePath)) continue;
     assert.ok(relativePath === '.gitignore' || textExtensions.has(extension), `unclassified tracked file: ${relativePath}`);
     const source = rawSource.normalize('NFKC');
     assert.doesNotMatch(source, privateIdentifierPattern, `${relativePath} ${kind} bytes must exclude private identifiers`);

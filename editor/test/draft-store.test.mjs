@@ -61,6 +61,27 @@ test('immutable actions edit every draft surface, preserve source bootstrap, and
   store.reset(); assert.equal(store.isDirty(),false); assert.equal(store.getState().site.name,original.site.name); assert.deepEqual(store.getState().research.map(({hidden,...record})=>record),original.research); unsubscribe();
 });
 
+test('avatar transitions atomically set or drop image fields through a closed action', () => {
+  const store=createDraftStore(bootstrap());
+  const image={type:'avatar/transition',mode:'image',src:'./site-images/portrait-12345678.png',alt:'Portrait'};
+  store.dispatch(image);
+  assert.deepEqual(store.getState().site.avatar,{mode:'image',src:image.src,alt:'Portrait'});
+  store.dispatch({type:'avatar/transition',mode:'hidden'});
+  assert.deepEqual(store.getState().site.avatar,{mode:'hidden'});
+  store.dispatch(image);
+  store.dispatch({type:'avatar/transition',mode:'initials'});
+  assert.deepEqual(store.getState().site.avatar,{mode:'initials'});
+  const before=store.getState(),invalid=[
+    {type:'avatar/transition',mode:'image',src:'../escape.png',alt:'Portrait'},
+    {type:'avatar/transition',mode:'image',src:'./site-images/portrait.png',alt:''},
+    {type:'avatar/transition',mode:'hidden',src:'./site-images/portrait.png'},
+    {type:'avatar/transition',mode:'image',src:'./site-images/portrait.png',alt:'Portrait',extra:true},
+    Object.assign(Object.create({type:'avatar/transition'}),{mode:'hidden'}),
+  ];
+  for(const action of invalid){assert.throws(()=>store.dispatch(action),/头像|操作|属性|路径|说明/);assert.deepEqual(store.getState(),before);}
+  assert.equal({}.polluted,undefined);
+});
+
 test('block operations copy, hide, remove and move without mutation and protect contribution controls', () => {
   const source=bootstrap(); source.about.sections[0].blocks=[block('block0001'),block('block0002','list','- one'),block('block0003','table','|A|\n|-|')];
   const store=createDraftStore(source);
@@ -88,6 +109,15 @@ test('project create, remove, slug and kind changes require distinct confirmatio
   const contribution=project.document.sections.find(isContribution); store.dispatch({type:'field/set',path:['projects',0,'document','sections',project.document.sections.indexOf(contribution),'blocks',0,'markdown'],value:'My work'});store.dispatch({type:'field/set',path:['projects',0,'document','frontmatter','summary'],value:'Summary'});store.dispatch({type:'field/set',path:['projects',0,'document','frontmatter','role'],value:'Role'});store.dispatch({type:'field/set',path:['projects',0,'document','frontmatter','methods',0],value:'Method'}); assert.equal(store.getState().saveDisabled,false);
   store.dispatch({type:'project/change-kind',slug:'project-one-2',kind:'individual'}); assert.ok(store.getState().pendingKindChange.diff.removedSection); store.dispatch({type:'project/confirm-kind-change',slug:'project-one-2'}); assert.equal(store.getState().projects[0].document.sections.some(isContribution),false);
   store.dispatch({type:'project/change-slug',slug:'project-one-2',candidate:'renamed'}); assert.equal(store.getState().projects[0].slug,'project-one-2'); store.dispatch({type:'project/confirm-slug-change',slug:'project-one-2'}); assert.equal(store.getState().projects[0].slug,'renamed'); assert.equal('slug' in store.getState().projects[0].document,false);
+});
+
+test('confirmed project slug atomically migrates its canonical image descriptors', () => {
+  const store=createDraftStore(bootstrap());
+  store.dispatch({type:'project/change-slug',slug:'project-one',candidate:'renamed-project'});
+  store.dispatch({type:'project/confirm-slug-change',slug:'project-one'});
+  assert.deepEqual(store.getState().images,[{kind:'project',slug:'renamed-project',name:'a.png',destination:'projects/renamed-project/images/a.png',sha256:'b'.repeat(64)}]);
+  const candidate=toCandidateBundle(store.getState(),{sessionId:'session-A',uploads:[],resolveCanonical:descriptor=>descriptor.destination==='projects/renamed-project/images/a.png',resolveUpload:()=>false});
+  assert.deepEqual(candidate.images,[{kind:'canonical',destination:'projects/renamed-project/images/a.png',sha256:'b'.repeat(64)}]);
 });
 
 test('candidate bundle stays structured and resolves complete canonical/upload references fail closed', () => {
