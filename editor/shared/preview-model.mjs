@@ -1,0 +1,36 @@
+function node(tag,text='',attributes={},children=[],editorId) { return {tag,text,attributes,children,...(editorId?{editorId}:{})}; }
+function visibleSections(document) { return (document?.sections??[]).filter(section=>!section.hidden&&section.blocks.some(block=>!block.hidden)); }
+function plain(markdown='') { return markdown.replace(/!\[([^\]]*)\]\([^)]+\)/g,'$1').replace(/\[([^\]]+)\]\([^)]+\)/g,'$1').replace(/[*_`]/g,'').replace(/^#{1,6}\s+/gm,'').replace(/^>\s?/gm,'').replace(/\s+/g,' ').trim(); }
+function image(markdown='') { const match=markdown.match(/^!\[([^\]]*)\]\(([^)]+)\)(?:\r?\n+([\s\S]+))?$/);return match?{alt:match[1],src:match[2],caption:match[3]?.replace(/^Fig\.\s*/i,'').trim()??''}:null; }
+function safeHref(href) { return typeof href==='string'&&(/^(?:https:|mailto:)/.test(href)||href.startsWith('/'))?href:null; }
+function profileLinks(links={}) { return [['GitHub',links.github],['LinkedIn',links.linkedin],['Google Scholar',links.googleScholar],['ORCID',links.orcid],...(links.custom??[]).map(item=>[item.label,item.href])].map(([label,href])=>({label,href:safeHref(href)})).filter(link=>link.href); }
+function manuscript(record,level='h3') { const data=record.document?.frontmatter??record.frontmatter??record;const children=[];if(data.status)children.push(node('p',data.status));children.push(node(level,data.title));children.push(node('p',`${data.authorship?`${data.authorship}. `:''}${data.summary}`));if(data.scope?.length)children.push(node('ul','',{},data.scope.map(item=>node('li',item))));return node('article','',{},children,record.slug); }
+function projectRow(record,level='h2') { const data=record.document?.frontmatter??record.frontmatter,slug=record.slug??record.document?.slug;return node('article','',{},[node('div','',{},[node(level,'',{},[node('a',data.title,{href:`/projects/${slug}/`})]),node('p',data.summary)]),node('dl','',{},[node('div','',{},[node('dt','Type'),node('dd',data.category)]),node('div','',{},[node('dt','Role'),node('dd',data.role)])])],slug); }
+function inline(markdown='') { const match=markdown.match(/^(.*?)\[([^\]]+)\]\(([^)]+)\)(.*)$/);if(!match)return [node('span',plain(markdown))];const href=safeHref(match[3]);return [node('span',plain(match[1])),...(href?[node('a',match[2],{href})]:[node('span',match[2])]),node('span',plain(match[4]))]; }
+function blockNode(block,slug) { const id=block.id,source=block.markdown??block.raw??'';if(block.type==='image'){const parsed=image(source);if(!parsed)return null;const src=`/assets/projects/${slug}/${parsed.src.replace(/^\.\/images\//,'')}`;return node('figure','',{},[node('a','',{href:src},[node('img','',{src,alt:parsed.alt,loading:'lazy'})]),...(parsed.caption?[node('figcaption',parsed.caption)]:[])],id);}if(block.type==='subheading')return node('h3',plain(source),{},[],id);if(block.type==='paragraph')return node('p','',{},inline(source),id);if(block.type==='list')return node('ul','',{},source.split(/\r?\n/).filter(line=>/^\s*[-*+]\s+/.test(line)).map(line=>node('li',plain(line.replace(/^\s*[-*+]\s+/,'')))),id);if(block.type==='table'){const rows=source.split(/\r?\n/).filter(line=>line.includes('|')).map(line=>line.split('|').slice(1,-1).map(cell=>cell.trim())).filter((_,index)=>index!==1);return node('table','',{},rows.map((cells,row)=>node('tr','',{},cells.map(cell=>node(row?'td':'th',plain(cell))))),id);}return node('pre',plain(source),{},[],id); }
+function projectDocument(record) { const data=record.document.frontmatter,children=[node('p',data.category),node('h1',data.title),node('p',data.summary),node('dl','',{},[node('div','',{},[node('dt','Role'),node('dd',data.role)]),node('div','',{},[node('dt','Methods and tools'),node('dd',data.methods.join(' · '))])])];for(const section of visibleSections(record.document)){children.push(node('section','',{class:section.kind==='contribution'?'project-section contribution-section':'project-section'},[node('h2',section.title),...section.blocks.filter(block=>!block.hidden).map(block=>blockNode(block,record.slug)).filter(Boolean)],section.id));}return children; }
+function currentDirection(about) { for(const section of about.sections??[])for(const block of section.blocks??[])if(block.type==='paragraph'&&!block.hidden)return plain(block.markdown);return ''; }
+function currentDirectionId(about) { for(const section of about.sections??[])for(const block of section.blocks??[])if(block.type==='paragraph'&&!block.hidden)return block.id;return undefined; }
+
+export function toPreviewModel(draft,route='/') {
+  const site=draft.site, projects=draft.projects??[], research=draft.research??[];let children=[];
+  if(route==='/'){
+    children=[node('h1','About'),node('p',site.intro),node('section','',{},[node('h2','Selected Projects'),...projects.filter(record=>record.document.frontmatter.featured).map(record=>projectRow(record,'h3'))]),node('section','',{},[node('h2','Research & Manuscripts'),...research.map(record=>manuscript(record))]),node('div','',{},[node('strong','Current direction'),node('p',currentDirection(draft.about),{},[],currentDirectionId(draft.about))])];
+  } else if(route==='/research/'){
+    children=[node('h1','Research'),node('section','',{},[node('h2','Research Interests'),node('ul','',{},site.interests.map(item=>node('li',item)))]),node('section','',{},[node('h2','Ongoing Work'),node('p',currentDirection(draft.about))]),node('section','',{},[node('h2','Research & Manuscripts'),...research.map(record=>manuscript(record))])];
+  } else if(route==='/projects/') children=[node('h1','Projects'),node('p','Selected work in systems engineering, power and control simulation, and communication-system analysis.'),node('div','',{},projects.map(record=>projectRow(record,'h2')))];
+  else {const slug=route.match(/^\/projects\/([^/]+)\/$/)?.[1],record=projects.find(item=>item.slug===slug);if(!record)throw new Error('预览路由不存在');children=projectDocument(record);}
+  return {route,lang:'en',theme:{...site.theme,focus:site.theme.focus??site.theme.accent},profile:{name:site.name,avatar:site.avatar,links:profileLinks(site.links)},nodes:children};
+}
+
+function walk(nodes,visit) { for(const value of nodes){visit(value);walk(value.children??[],visit);} }
+function collectText(value) { return `${value.text??''}${(value.children??[]).map(collectText).join('')}`; }
+export function previewSemantics(model) {
+  const headings=[],links=[],figures=[],contributionHeadings=[];walk(model.nodes,value=>{
+    if(/^h[1-3]$/.test(value.tag))headings.push(`${value.tag}:${collectText(value).replace(/\s+/g,' ').trim()}`);
+    if(value.tag==='a')links.push({text:collectText(value).replace(/\s+/g,' ').trim(),href:value.attributes.href});
+    if(value.tag==='figure'){let alt='',caption='';walk(value.children,child=>{if(child.tag==='img')alt=child.attributes.alt??'';if(child.tag==='figcaption')caption=child.text.replace(/\s+/g,' ').trim();});figures.push({alt,caption});}
+    if(value.tag==='section'&&String(value.attributes.class??'').includes('contribution-section')){const heading=value.children.find(child=>child.tag==='h2');if(heading)contributionHeadings.push(heading.text.trim());}
+  });
+  return {headings,text:model.nodes.map(collectText).join('').replace(/\s+/g,' ').trim(),links,figures,contributionHeadings};
+}

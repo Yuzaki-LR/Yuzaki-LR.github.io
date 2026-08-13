@@ -266,3 +266,12 @@ test('contrast boundaries use the WCAG thresholds for normal text and focus', ()
     (error) => error.message.includes('required 3:1'),
   );
 });
+
+test('shared contrast contract retains exact Chinese field and ratio diagnostics', () => {
+  assert.throws(
+    () => validateThemeContrast({ text:'#777777',background:'#ffffff',surface:'#ffffff',accent:'#000000',focus:'#000000' }),
+    /正文\/背景: required 4\.5:1, actual 4\.48:1/,
+  );
+  const result=validateThemeContrast({text:'#17212b',background:'#ffffff',surface:'#f7f8f9',accent:'#2d587a'});
+  assert.equal(result.valid,true);assert.equal(result.checks.length,6);assert.equal(result.checks[0].field,'text/background');
+});

@@ -28,6 +28,10 @@ export function createRepositoryService({ projectRoot, csrfToken, filesystem = n
         about: repository.about,
         research: repository.research.map(({slug,document})=>({slug,document})),
         projects: repository.projects.map(({slug,document})=>({slug,document})),
+        images: repository.images.map(({kind,slug,name,sha256})=>({
+          kind, ...(kind==='project'?{slug}:{}), name, sha256,
+          destination:kind==='project'?`projects/${slug}/images/${name}`:`site-images/${name}`,
+        })).sort((first,second)=>first.destination.localeCompare(second.destination)),
       };
     },
   };

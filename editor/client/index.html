@@ -1,5 +1,17 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>本地内容编辑器</title><link rel="stylesheet" href="/assets/styles.css"></head>
-<body><main><h1>本地内容编辑器</h1><p>只读安全服务已就绪，后续步骤将加入编辑能力。</p><iframe title="网站预览" sandbox=""></iframe></main></body>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>本地内容编辑器</title><link rel="stylesheet" href="/assets/styles.css"><script type="module" src="/modules/app.mjs"></script></head>
+<body>
+  <header class="topbar"><div><span class="edition">YUNXI WU · LOCAL EDITION</span><h1>内容校样台</h1></div><p id="draft-status" role="status">正在读取规范内容…</p></header>
+  <main class="editor-shell">
+    <nav class="editor-nav" aria-label="编辑区域">
+      <button type="button" data-panel="site">全站资料</button><button type="button" data-route="/">首页</button><button type="button" data-route="/research/">研究与稿件</button><button type="button" data-route="/projects/">项目</button><button type="button" data-panel="appearance">外观</button><button type="button" data-panel="backup">备份</button>
+    </nav>
+    <section class="proof-area" aria-labelledby="preview-heading">
+      <div class="preview-tools"><div><span class="kicker">实时校样</span><h2 id="preview-heading">正式网站预览</h2></div><div class="viewport-switcher" role="group" aria-label="预览宽度"><button type="button" data-width="desktop" aria-pressed="true">桌面</button><button type="button" data-width="tablet" aria-pressed="false">平板</button><button type="button" data-width="mobile" aria-pressed="false">手机</button></div></div>
+      <div class="preview-stage" data-width="desktop"><iframe title="网站预览" sandbox="allow-same-origin"></iframe></div>
+    </section>
+    <aside class="inspector" aria-labelledby="inspector-heading"><span class="kicker">检查器</span><h2 id="inspector-heading">选择内容进行编辑</h2><div id="inspector-fields"></div><template id="control-template"><div class="field-card"><label>内容<textarea rows="6"></textarea></label><div class="control-line"><div class="reorder-controls" role="group" aria-label="调整顺序"><button type="button">上移</button><button type="button">下移</button></div><div data-hide-control-group><button type="button">隐藏</button><p class="privacy-warning">隐藏内容仍保留在 Markdown 中，并可能在未来的公开源代码仓库中可见。</p></div></div></div></template></aside>
+  </main>
+</body>
 </html>
