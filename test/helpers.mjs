@@ -1,12 +1,32 @@
 import { cp, link, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rename, rm, unlink, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import assert from 'node:assert/strict';
 import path from 'node:path';
 import YAML from 'yaml';
 import { loadProjects } from '../src/lib/content/repository.mjs';
 
 export const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const distRoot = path.join(projectRoot, 'dist');
+
+export async function snapshotCanonicalDistTree() {
+  const root = await realpath(distRoot);
+  const records = [];
+  async function visit(directory) {
+    const entries = await readdir(directory, { withFileTypes: true });
+    for (const entry of entries) {
+      const target = path.join(directory, entry.name);
+      if (entry.isDirectory()) await visit(target);
+      else if (entry.isFile()) records.push({
+        path: path.relative(root, target).replace(/\\/g, '/'),
+        sha256: createHash('sha256').update(await readFile(target)).digest('hex'),
+      });
+      else throw new Error('canonical dist contains a non-file entry');
+    }
+  }
+  await visit(root);
+  return records.sort((left, right) => left.path.localeCompare(right.path));
+}
 
 export function readDist(relativePath) {
   return readFile(path.join(distRoot, relativePath), 'utf8');
@@ -132,7 +152,14 @@ async function claimAndDeleteBuildLock(metadata, claim) {
   }
 }
 async function recoverDeadBuildLock() {
-  const metadata = await readFile(astroBuildLock, 'utf8');
+  let metadata;
+  try {
+    metadata = await readFile(astroBuildLock, 'utf8');
+  } catch (error) {
+    if (error?.code === 'ENOENT') return true;
+    throw error;
+  }
+  if (!metadata.endsWith('\n')) return false;
   const owner = lockOwner(metadata);
   try { process.kill(owner.pid, 0); return false; } catch (error) {
     if (error?.code !== 'ESRCH') return false;
@@ -141,7 +168,7 @@ async function recoverDeadBuildLock() {
   await claimAndDeleteBuildLock(metadata, claim);
   return true;
 }
-export async function acquireAstroBuildLock({ timeoutMs = 10_000 } = {}) {
+export async function acquireAstroBuildLock({ timeoutMs = 10_000, afterLockExists } = {}) {
   const deadline = Date.now() + timeoutMs;
   while (true) {
     try {
@@ -165,6 +192,7 @@ export async function acquireAstroBuildLock({ timeoutMs = 10_000 } = {}) {
       };
     } catch (error) {
       if (error?.code !== 'EEXIST') throw error;
+      if (afterLockExists) await afterLockExists();
       if (await recoverDeadBuildLock()) continue;
       if (Date.now() >= deadline) throw new Error('timed out waiting for build lock');
       await new Promise((resolve) => setTimeout(resolve, 25));
@@ -178,6 +206,18 @@ export async function withAstroBuildLock(run) {
   } finally {
     await release();
   }
+}
+
+export async function withCanonicalDistInvariant(run, { afterCompare } = {}) {
+  return withAstroBuildLock(async () => {
+    const before = await snapshotCanonicalDistTree();
+    try {
+      return await run();
+    } finally {
+      assert.deepEqual(await snapshotCanonicalDistTree(), before, 'candidate build must not change canonical dist');
+      if (afterCompare) await afterCompare();
+    }
+  });
 }
 
 export async function createTestWorkspace() {
@@ -202,6 +242,49 @@ export async function createTestWorkspace() {
       if (await readFile(sentinel, 'utf8') !== 'editor-test-workspace-v1\n') throw new Error('editor test workspace sentinel changed');
       cleaned = true;
       await rm(expectedParent, { recursive: true, force: true });
+    },
+  };
+}
+
+export async function createAstroCandidateWorkspace({ afterCreate } = {}) {
+  const workspace = await createTestWorkspace();
+  const contentRoot = path.join(workspace.root, 'src', 'content');
+  const outputRoot = path.join(workspace.root, 'dist');
+  const cacheRoot = path.join(workspace.root, '.astro');
+  const tempRoot = path.join(workspace.root, 'tmp');
+  try {
+    if (afterCreate) await afterCreate({ root: workspace.root });
+    await mkdir(outputRoot);
+    await mkdir(cacheRoot);
+    await mkdir(tempRoot);
+  } catch (error) {
+    try {
+      await workspace.cleanup();
+    } catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], 'candidate workspace initialization cleanup failed');
+    }
+    throw error;
+  }
+  return {
+    ...workspace,
+    contentRoot,
+    outputRoot,
+    cacheRoot,
+    tempRoot,
+    environment({ base, contentRoot: selectedContentRoot = contentRoot } = {}) {
+      const environment = {
+        ...process.env,
+        NODE_ENV: 'test',
+        EDITOR_CANDIDATE_BUILD: '1',
+        EDITOR_OPERATION_ROOT: workspace.root,
+        EDITOR_CONTENT_ROOT: selectedContentRoot,
+        EDITOR_OUT_DIR: outputRoot,
+        EDITOR_CACHE_DIR: cacheRoot,
+        TEMP: tempRoot,
+        TMP: tempRoot,
+      };
+      if (base !== undefined) environment.BASE = base;
+      return environment;
     },
   };
 }

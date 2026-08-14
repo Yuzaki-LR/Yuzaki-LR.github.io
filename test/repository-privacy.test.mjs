@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -22,12 +22,17 @@ const sevenDigitIdentifier = /\b\d{7}\b/u;
 const titlePhraseOracle = /\/(?<body>[A-Z][a-z]+(?: [A-Z][a-z]+){1,2}(?:\|[A-Z][a-z]+(?: [A-Z][a-z]+){1,2})*)\/[dgimsuvy]*/gu;
 
 function git(argumentsList, { root = projectRoot, indexFile, input } = {}) {
-  return execFileSync('git', ['-c', `safe.directory=${root}`, ...argumentsList], {
+  const result = spawnSync('git', ['-c', `safe.directory=${root}`, '-c', 'core.autocrlf=false', ...argumentsList], {
     cwd: root,
     encoding: 'utf8',
     input,
     env: { ...process.env, ...(indexFile ? { GIT_INDEX_FILE: indexFile } : {}) },
   });
+  if (result.error) throw result.error;
+  assert.equal(result.signal, null, `git ${argumentsList[0]} terminated by signal ${result.signal}`);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stderr, '', `git ${argumentsList[0]} emitted stderr`);
+  return result.stdout;
 }
 
 function gitTrackedFilesWithProcessLocalSafeDirectory({ root = projectRoot, indexFile } = {}) {
@@ -81,7 +86,7 @@ test('every tracked file is classified and privacy-scanned', () => {
 test('privacy scan rejects a generic seven-digit identifier in a copied tracked-text fixture', async (t) => {
   const workspace = await createTestWorkspace();
   t.after(workspace.cleanup);
-  git(['init'], { root: workspace.root });
+  git(['init', '--quiet', '--initial-branch=main'], { root: workspace.root });
   git(['add', 'src'], { root: workspace.root });
   const fixture = path.join(workspace.root, 'src', 'content', 'site.yml');
   await writeFile(fixture, `${readFileSync(fixture, 'utf8')}\nprivacy-sentinel: ${['765', '4321'].join('')}\n`);
@@ -95,7 +100,7 @@ test('privacy scan rejects a generic seven-digit identifier in a copied tracked-
 test('privacy scan rejects a dynamically constructed non-public name oracle in a copied tracked-text fixture', async (t) => {
   const workspace = await createTestWorkspace();
   t.after(workspace.cleanup);
-  git(['init'], { root: workspace.root });
+  git(['init', '--quiet', '--initial-branch=main'], { root: workspace.root });
   git(['add', 'src'], { root: workspace.root });
   const fixture = path.join(workspace.root, 'src', 'content', 'site.yml');
   const nonPublicNameOracle = ['Private', 'Collaborator'].join(' ');
@@ -110,7 +115,7 @@ test('privacy scan rejects a dynamically constructed non-public name oracle in a
 test('privacy scan fails closed for an unclassified extension in a sentinel-protected alternate Git index', async (t) => {
   const workspace = await createTestWorkspace();
   t.after(workspace.cleanup);
-  git(['init'], { root: workspace.root });
+  git(['init', '--quiet', '--initial-branch=main'], { root: workspace.root });
   await mkdir(path.join(workspace.root, 'notes'), { recursive: true });
   await writeFile(path.join(workspace.root, 'notes', 'privacy-sentinel.private'), 'safe alternate-index fixture\n');
   const alternateIndex = path.join(workspace.parent, 'privacy-sentinel.index');

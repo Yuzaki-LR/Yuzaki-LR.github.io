@@ -14,51 +14,49 @@ import { toPublicSiteModel } from '../src/lib/content/render-model.mjs';
 import { listStaticAssetRoutes } from '../src/lib/content/asset-routes.mjs';
 import { GET as projectGet } from '../src/pages/assets/projects/[slug]/[name].png.ts';
 import { GET as siteGet } from '../src/pages/assets/site/[name].png.ts';
-import { distRoot, projectRoot, withAstroBuildLock, withContentCodecWorkspace } from './helpers.mjs';
+import { createAstroCandidateWorkspace, projectRoot, withCanonicalDistInvariant } from './helpers.mjs';
 
 const site = { name: 'Candidate', degree: 'Degree', institution: 'Institution', email: 'candidate@example.test', intro: 'Intro', interests: [], avatar: { mode: 'image', src: './site-images/avatar.png', alt: 'Avatar' }, links: { github: null, linkedin: null, googleScholar: null, orcid: null, custom: [] }, theme: { background: '#ffffff', surface: '#f7f8f9', text: '#17212b', accent: '#2d587a' }, navigation: [{ label: 'About', href: '/' }] };
 const about = () => parsePageFile('<!-- editor:section id="aboutfx01" kind="standard" hidden="false" -->\n## Current direction\n<!-- editor:block id="aboutfx02" type="paragraph" hidden="false" -->\nDirection\n');
 const project = () => parseProjectFile('---\nkind: individual\ncategory: Example\ntitle: Project\nshortTitle: Project\nsummary: Summary\nrole: Role\nmethods: [Method]\nfeatured: false\norder: 1\n---\n<!-- editor:section id="projectf1" kind="standard" hidden="false" -->\n## Overview\n<!-- editor:block id="projectf2" type="image" hidden="false" -->\n![Result](./images/result.png)\n');
 const research = () => parseResearchFile('---\ntitle: Candidate research\nsummary: Summary\norder: 1\n---\n<!-- editor:section id="researchf1" kind="standard" hidden="false" -->\n## Scope\n<!-- editor:block id="researchf2" type="paragraph" hidden="false" -->\nResearch\n');
 async function png() { return readFile(path.join(projectRoot, 'test', 'fixtures', 'content-v2', 'one-image', 'projects', 'sample-project', 'images', 'result.png')); }
-async function runBuild(contentRoot) {
-  return withAstroBuildLock(async () => {
-    const child = spawn(process.execPath, [path.join(projectRoot, 'node_modules', 'astro', 'bin', 'astro.mjs'), 'build'], {
-      cwd: projectRoot,
-      env: { ...process.env, NODE_ENV: 'test', TEST_SITE_CONTENT_ROOT: contentRoot },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    let stderr = '';
-    child.stderr.setEncoding('utf8');
-    child.stderr.on('data', (chunk) => { stderr += chunk; });
-    const [code] = await once(child, 'close');
-    return { code, stderr };
+async function runBuild(workspace, contentRoot) {
+  const child = spawn(process.execPath, [path.join(projectRoot, 'node_modules', 'astro', 'bin', 'astro.mjs'), 'build'], {
+    cwd: projectRoot,
+    env: workspace.environment({ contentRoot }),
+    stdio: ['ignore', 'pipe', 'pipe'],
   });
+  let stderr = '';
+  child.stderr.setEncoding('utf8');
+  child.stderr.on('data', (chunk) => { stderr += chunk; });
+  const [code] = await once(child, 'close');
+  return { code, stderr };
 }
 
-test('complete canonical candidate reloads pages/about, site-images avatar, project image, public hrefs and hashes', async () => {
-  await withContentCodecWorkspace(async ({ root }) => {
-    const bytes = await png();
-    const candidate = await writeCandidateBundle({ root, draft: { site, about: about(), projects: [{ slug: 'sample-project', document: project() }], research: [{ slug: 'candidate-research', document: research() }], images: [{ destination: 'site-images/avatar.png', bytes }, { destination: 'projects/sample-project/images/result.png', bytes }] } });
-    assert.ok(candidate.files.includes('.candidate/research/candidate-research.md'));
-    await assert.rejects(access(path.join(candidate.root, 'research', 'candidate-research', 'index.md')));
-    const repository = await loadSiteRepository({ contentRoot: candidate.root });
-    assert.equal(repository.research[0].slug, 'candidate-research');
-    const model = toPublicSiteModel(repository, { base: '/repo/' });
-    assert.equal(model.profile.avatar.src, '/repo/assets/site/avatar.png');
-    assert.deepEqual(model.navigation, [{ label: 'About', href: '/repo/' }]);
-    assert.deepEqual(listStaticAssetRoutes(repository).map((entry) => entry.pathname), ['/assets/projects/sample-project/result.png', '/assets/site/avatar.png']);
-    assert.equal(repository.images.find((entry) => entry.kind === 'site').sha256, createHash('sha256').update(bytes).digest('hex'));
-    const { code, stderr } = await runBuild(candidate.root);
-    assert.equal(code, 0, `candidate build should succeed: ${stderr}`);
-    const [emittedSite, emittedProject] = await Promise.all([
-      readFile(path.join(distRoot, 'assets', 'site', 'avatar.png')),
-      readFile(path.join(distRoot, 'assets', 'projects', 'sample-project', 'result.png')),
-    ]);
-    const expectedHash = createHash('sha256').update(bytes).digest('hex');
-    assert.equal(createHash('sha256').update(emittedSite).digest('hex'), expectedHash);
-    assert.equal(createHash('sha256').update(emittedProject).digest('hex'), expectedHash);
-  });
+test('complete canonical candidate reloads pages/about, site-images avatar, project image, public hrefs and hashes', async (t) => {
+  const workspace = await createAstroCandidateWorkspace();
+  t.after(workspace.cleanup);
+  const bytes = await png();
+  const candidate = await writeCandidateBundle({ root: workspace.root, draft: { site, about: about(), projects: [{ slug: 'sample-project', document: project() }], research: [{ slug: 'candidate-research', document: research() }], images: [{ destination: 'site-images/avatar.png', bytes }, { destination: 'projects/sample-project/images/result.png', bytes }] } });
+  assert.ok(candidate.files.includes('.candidate/research/candidate-research.md'));
+  await assert.rejects(access(path.join(candidate.root, 'research', 'candidate-research', 'index.md')));
+  const repository = await loadSiteRepository({ contentRoot: candidate.root });
+  assert.equal(repository.research[0].slug, 'candidate-research');
+  const model = toPublicSiteModel(repository, { base: '/repo/' });
+  assert.equal(model.profile.avatar.src, '/repo/assets/site/avatar.png');
+  assert.deepEqual(model.navigation, [{ label: 'About', href: '/repo/' }]);
+  assert.deepEqual(listStaticAssetRoutes(repository).map((entry) => entry.pathname), ['/assets/projects/sample-project/result.png', '/assets/site/avatar.png']);
+  assert.equal(repository.images.find((entry) => entry.kind === 'site').sha256, createHash('sha256').update(bytes).digest('hex'));
+  const { code, stderr } = await withCanonicalDistInvariant(() => runBuild(workspace, candidate.root));
+  assert.equal(code, 0, `candidate build should succeed: ${stderr}`);
+  const [emittedSite, emittedProject] = await Promise.all([
+    readFile(path.join(workspace.outputRoot, 'assets', 'site', 'avatar.png')),
+    readFile(path.join(workspace.outputRoot, 'assets', 'projects', 'sample-project', 'result.png')),
+  ]);
+  const expectedHash = createHash('sha256').update(bytes).digest('hex');
+  assert.equal(createHash('sha256').update(emittedSite).digest('hex'), expectedHash);
+  assert.equal(createHash('sha256').update(emittedProject).digest('hex'), expectedHash);
 });
 
 test('static asset routing rejects case aliases and dedupes an exact duplicate reference', () => {
