@@ -21,21 +21,36 @@ const csp="default-src 'self'; connect-src 'self'; img-src 'self' blob: data:; f
 function securityHeaders(response) { response.setHeader('Cache-Control','no-store'); response.setHeader('Referrer-Policy','no-referrer'); response.setHeader('X-Content-Type-Options','nosniff'); response.setHeader('Content-Security-Policy',csp); }
 function send(response,status,body='',type='application/json; charset=utf-8') { response.statusCode=status; response.setHeader('Content-Type',type); response.end(body); }
 function error(response,status,value) { send(response,status,JSON.stringify(serializePublicError(typeof value==='string'?{code:value}:value))); }
+function recoveryRequired() { const messageZh='检测到无法自动恢复的编辑记录，请保留现场并人工检查。'; return Object.assign(new Error(messageZh),{code:'RECOVERY_REQUIRED',messageZh}); }
 
 function oneHeader(request,name){const values=[];for(let index=0;index<(request.rawHeaders?.length??0);index+=2)if(request.rawHeaders[index].toLowerCase()===name)values.push(request.rawHeaders[index+1]);return values.length===1?values[0]:undefined;}
 async function readDeclared(request,length){const chunks=[];let total=0;for await(const chunk of request){total+=chunk.length;if(total>length)throw Object.assign(new Error('上传字节超出声明长度'),{code:'BAD_INPUT',field:'image',details:{reason:'invalid'}});chunks.push(chunk);}if(total!==length)throw Object.assign(new Error('上传字节与声明长度不一致'),{code:'BAD_INPUT',field:'image',details:{reason:'invalid'}});return Buffer.concat(chunks,total);}
 
-export async function startEditor({ projectRoot, preferredPort=0, token, csrfToken, repositoryService, uploadStore=createUploadStore(), imageDecoder=sanitiseImage }) {
+export async function startEditor({ projectRoot, preferredPort=0, token, csrfToken, repositoryService, transactionService, uploadStore=createUploadStore(), imageDecoder=sanitiseImage }) {
   void projectRoot;
+  if(!transactionService || typeof transactionService.recoverBeforeListen!=='function' || typeof transactionService.runMutation!=='function'){
+    try{uploadStore.close();}catch{}
+    throw recoveryRequired();
+  }
+  let startup;
+  try{startup=await transactionService.recoverBeforeListen();}
+  catch{try{uploadStore.close();}catch{}throw recoveryRequired();}
+  if(!startup?.ok || startup.recoveryOnly){
+    try{uploadStore.close();}catch{}
+    throw recoveryRequired();
+  }
   const generated=createSessionSecrets(); token ??= generated.sessionToken; csrfToken ??= generated.csrfToken;
   const session={token:createSessionSecrets().sessionToken,csrfToken}; let startupToken=token; let origin;
   const server=http.createServer((request,response)=>void handle(request,response).catch(()=>error(response,500,'INTERNAL_ERROR')));
   server.on('clientError',(_value,socket)=>{if(socket.writable)socket.end('HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');});
+  async function runMutation(action){
+    return transactionService.runMutation(action);
+  }
   async function handle(request,response) {
     securityHeaders(response);
     const url=new URL(request.url,'http://local.invalid');
     const uploadDelete=/^\/api\/uploads\/([a-f0-9]{32})$/.exec(url.pathname);
-    if(uploadDelete&&!url.search){response.setHeader('Connection','close');if(request.method!=='DELETE')return error(response,405,'METHOD_NOT_ALLOWED');const guarded=guardRequest({request,origin,routeClass:'state',session});if(!guarded.ok)return error(response,guarded.status,guarded.code);if(!uploadStore.remove(uploadDelete[1]))return error(response,404,'NOT_FOUND');response.statusCode=204;return response.end();}
+    if(uploadDelete&&!url.search){response.setHeader('Connection','close');if(request.method!=='DELETE')return error(response,405,'METHOD_NOT_ALLOWED');const guarded=guardRequest({request,origin,routeClass:'state',session});if(!guarded.ok)return error(response,guarded.status,guarded.code);try{return await runMutation(()=>{if(!uploadStore.remove(uploadDelete[1]))return error(response,404,'NOT_FOUND');response.statusCode=204;return response.end();});}catch(value){return error(response,value?.code==='RECOVERY_REQUIRED'?503:500,value?.code==='RECOVERY_REQUIRED'?'INTERNAL_ERROR':value);}}
     if(url.pathname==='/api/uploads'&&url.search)return error(response,404,'NOT_FOUND');
     if(url.pathname==='/api/uploads'){
       response.setHeader('Connection','close');
@@ -44,7 +59,7 @@ export async function startEditor({ projectRoot, preferredPort=0, token, csrfTok
       const type=oneHeader(request,'content-type'),lengthText=oneHeader(request,'content-length'),applicationLengthText=oneHeader(request,'x-editor-content-length'),transportName=oneHeader(request,'x-editor-filename');let originalName;
       try{originalName=decodeOriginalImageName(transportName);}catch(value){return error(response,400,value);}
       if(type!=='application/octet-stream'||!/^[1-9]\d*$/.test(lengthText??'')||!/^[1-9]\d*$/.test(applicationLengthText??''))return error(response,400,{code:'BAD_INPUT',field:'image',details:{reason:'invalid'}});
-      let release;try{const length=Number(lengthText),applicationLength=Number(applicationLengthText);if(!Number.isSafeInteger(length)||!Number.isSafeInteger(applicationLength)||length!==applicationLength||!Number.isSafeInteger(uploadStore.maxFileBytes)||length>uploadStore.maxFileBytes)throw Object.assign(new Error('上传长度声明不一致'),{code:'BAD_INPUT',field:'image',details:{reason:'invalid'}});release=uploadStore.beginDecode(length);const bytes=await readDeclared(request,length);const image=await imageDecoder({bytes,originalName,maxPixels:uploadStore.maxPixels});const result=uploadStore.add(image);return send(response,201,JSON.stringify(result));}catch(value){return error(response,400,value);}finally{release?.();}
+      try{return await runMutation(async()=>{let release;try{const length=Number(lengthText),applicationLength=Number(applicationLengthText);if(!Number.isSafeInteger(length)||!Number.isSafeInteger(applicationLength)||length!==applicationLength||!Number.isSafeInteger(uploadStore.maxFileBytes)||length>uploadStore.maxFileBytes)throw Object.assign(new Error('上传长度声明不一致'),{code:'BAD_INPUT',field:'image',details:{reason:'invalid'}});release=uploadStore.beginDecode(length);const bytes=await readDeclared(request,length);const image=await imageDecoder({bytes,originalName,maxPixels:uploadStore.maxPixels});const result=uploadStore.add(image);return send(response,201,JSON.stringify(result));}finally{release?.();}});}catch(value){return error(response,value?.code==='RECOVERY_REQUIRED'?503:400,value?.code==='RECOVERY_REQUIRED'?'INTERNAL_ERROR':value);}
     }
     if(request.method!=='GET') return error(response,405,'METHOD_NOT_ALLOWED');
     if(url.pathname==='/' && url.searchParams.has('session')) {

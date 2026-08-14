@@ -9,10 +9,17 @@ import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import path from "node:path";
 import os from "node:os";
-import { startEditor } from "../server/app.mjs";
+import { startEditor as startEditorServer } from "../server/app.mjs";
 import { createImageSession, applyProjectImageImport } from "../client/image-controls.mjs";
 import { createRepositoryService } from "../server/repository-service.mjs";
 import { createTestWorkspace } from "../../test/helpers.mjs";
+
+const readyTransactionService = {
+  recoverBeforeListen: async () => ({ ok: true, recoveryOnly: false, results: [] }),
+  runMutation: async (action) => action(),
+};
+const startEditor = (options) =>
+  startEditorServer({ ...options, transactionService: readyTransactionService });
 
 async function treeHash(root) {
   const hash = createHash("sha256");

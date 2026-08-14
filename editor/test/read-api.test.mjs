@@ -7,8 +7,11 @@ import { access, readFile, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createTestWorkspace } from '../../test/helpers.mjs';
 import { createRepositoryService } from '../server/repository-service.mjs';
-import { startEditor } from '../server/app.mjs';
+import { startEditor as startEditorServer } from '../server/app.mjs';
 import { loadSiteRepository } from '../../src/lib/content/repository.mjs';
+
+const readyTransactionService={recoverBeforeListen:async()=>({ok:true,recoveryOnly:false,results:[]}),runMutation:async(action)=>action()};
+const startEditor=(options)=>startEditorServer({...options,transactionService:readyTransactionService});
 
 async function treeHash(root) { const h=createHash('sha256'); async function walk(dir){ for(const e of (await readdir(dir,{withFileTypes:true})).sort((a,b)=>a.name.localeCompare(b.name))){ const p=path.join(dir,e.name); h.update(path.relative(root,p)); if(e.isDirectory()) await walk(p); else h.update(await readFile(p)); }} await walk(root); return h.digest('hex'); }
 async function raw(origin, target, { headers={}, method='GET' }={}) { const url=new URL(target,origin); return new Promise((resolve,reject)=>{ const req=http.request({hostname:url.hostname,port:url.port,path:url.pathname+url.search,method,headers,setHost:Object.keys(headers).some((name)=>name.toLowerCase()==='host')},res=>{let data='';res.setEncoding('utf8');res.on('data',c=>data+=c);res.on('end',()=>resolve({status:res.statusCode,headers:res.headers,body:data}));});req.on('error',reject);req.end();}); }
