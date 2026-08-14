@@ -653,16 +653,26 @@ export function createTransactionService({
       return withMutationLease(async () => {
         assertSaveInput(input ?? {});
         assertCandidateInput(input);
-        await validateImageBindings({ contentRoot, bundle: input.bundle, uploads: input.uploads, filesystem });
-        const before = { content: await treeManifest(contentRoot, filesystem), dist: await treeManifest(distRoot, filesystem) };
         const desired = bundleFileHashes(input.bundle, input.uploads);
-        if (before.content.compatibilityHash !== input.baseManifestHash) {
-          const context = conflictContext({ current: before.content, desired, bundle: input.bundle });
-          if (!input.conflictResolutionToken) throw failure('CONFLICT', '规范内容已改变', { diff: context.diff, confirmationContext: context });
+        try {
+          await validateImageBindings({ contentRoot, bundle: input.bundle, uploads: input.uploads, filesystem });
+        } catch (error) {
+          if (error?.code === 'CONFLICT' && !error.confirmationContext) {
+            const current = await treeManifest(contentRoot, filesystem);
+            const context = conflictContext({ current, desired, bundle: input.bundle });
+            Object.assign(error, { diff: context.diff, confirmationContext: context });
+          }
+          throw error;
+        }
+        const before = { content: await treeManifest(contentRoot, filesystem), dist: await treeManifest(distRoot, filesystem) };
+        const context = conflictContext({ current: before.content, desired, bundle: input.bundle });
+        if (input.conflictResolutionToken) {
           const confirmed = consumeConfirmation({ token: confirmationToken(input.conflictResolutionToken), sessionId: input.sessionId, action: 'conflict', targetId: context.targetId });
           if (confirmed.diffHash !== context.diffHash || confirmed.draftHash !== context.draftHash || confirmed.canonicalManifestHash !== context.canonicalManifestHash) {
-            throw failure('CONFLICT', '确认后的内容已改变');
+            throw failure('CONFLICT', '确认后的内容已改变', { diff: context.diff, confirmationContext: context });
           }
+        } else if (before.content.compatibilityHash !== input.baseManifestHash) {
+          throw failure('CONFLICT', '规范内容已改变', { diff: context.diff, confirmationContext: context });
         }
         const { operationId, createdAt, operationRoot } = await allocateOperationRoot();
         const journal = { formatVersion: 1, operationId, kind: 'save', createdAt, phase: 'preparing-candidate', baseManifestHash: input.baseManifestHash, before, candidate: {} };
@@ -684,7 +694,17 @@ export function createTransactionService({
           throw failure('CANDIDATE_BUILD_FAILED', '候选构建失败');
         }
 
-        const promoted = await promoteCandidate({ operationRoot, journal, before, candidateContentRoot, candidateDistRoot, desired });
+        let promoted;
+        try {
+          promoted = await promoteCandidate({ operationRoot, journal, before, candidateContentRoot, candidateDistRoot, desired });
+        } catch (error) {
+          if (error?.code === 'CONFLICT' && !error.confirmationContext) {
+            const current = await treeManifest(contentRoot, filesystem);
+            const context = conflictContext({ current, desired, bundle: input.bundle });
+            Object.assign(error, { diff: context.diff, confirmationContext: context });
+          }
+          throw error;
+        }
         await retainBackups();
         return { ok: true, operationId, manifestHash: promoted.content.compatibilityHash };
       });
@@ -695,7 +715,6 @@ export function createTransactionService({
         assertCandidateInput(input);
         await validateImageBindings({ contentRoot, bundle: input.bundle, uploads: input.uploads, filesystem });
         const before = { content: await treeManifest(contentRoot, filesystem), dist: await treeManifest(distRoot, filesystem) };
-        if (before.content.compatibilityHash !== input.baseManifestHash) throw failure('CONFLICT', '规范内容已改变', { diff: fileDiff(before.content, bundleFileHashes(input.bundle, input.uploads)) });
         const { operationId, createdAt, operationRoot } = await allocateOperationRoot();
         const journal = { formatVersion: 1, operationId, kind: 'archive', createdAt, phase: 'preparing-candidate', baseManifestHash: input.baseManifestHash, before, candidate: {} };
         await writeJournal(operationRoot, journal, filesystem, failpoint);

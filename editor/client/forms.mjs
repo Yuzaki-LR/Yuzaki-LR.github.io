@@ -1031,19 +1031,58 @@ function renderAppearance({ container, store, rerender, state, imageSession }) {
     }),
   );
 }
-function renderBackup({ container, state }) {
+function renderBackup({ container, state, api, csrfToken, onRestored }) {
   container.append(
-    node("h3", { text: "草稿与图片边界" }),
+    node("h3", { text: "草稿与备份" }),
     node("p", { text: `规范内容基线：${state.baseManifestHash}` }),
-    node("p", {
-      text: imagePrivacyWarning(),
-      className: "privacy-warning",
-    }),
+    node("p", { text: imagePrivacyWarning(), className: "privacy-warning" }),
   );
+  const list = node("div", { attributes: { "aria-live": "polite" } });
+  list.append(node("p", { text: "正在读取备份…" }));
+  container.append(list);
+  if (typeof api?.backups !== "function") return;
+  api.backups().then((value) => {
+    if (!list.isConnected) return;
+    list.replaceChildren();
+    if (value.status !== 200 || value.ok !== true) { errorBox(list, new Error(value.messageZh ?? "无法读取备份。")); return; }
+    if (!value.backups.length) { list.append(node("p", { text: "尚无备份记录。" })); return; }
+    const operationNames = { save: "保存", archive: "草稿备份", restore: "恢复" };
+    for (const backup of [...value.backups].reverse()) {
+      const card = node("article", { className: "record-card", dataset: { backupId: backup.id } });
+      card.append(
+        node("h4", { text: new Date(backup.createdAt).toLocaleString("zh-CN") }),
+        node("p", { text: `操作：${operationNames[backup.kind] ?? backup.kind} · 状态：${backup.status}` }),
+      );
+      const output = node("div", { attributes: { "aria-live": "polite" } });
+      const view = actionButton("查看差异", async () => {
+        view.disabled = true; output.replaceChildren(node("p", { text: "正在比较文本、配置与图片…" }));
+        try {
+          const result = await api.diffBackup(backup.id, csrfToken);
+          if (result.status !== 200 || result.ok !== true) throw new Error(result.messageZh ?? "无法比较备份。");
+          const lines = [
+            ...(result.diff.added ?? []).map((name) => `新增：${name}`),
+            ...(result.diff.removed ?? []).map((name) => `删除：${name}`),
+            ...(result.diff.changed ?? []).map((name) => `修改：${name}`),
+          ];
+          output.replaceChildren(node("pre", { text: lines.join("\n") || "没有文件差异" }));
+          const confirm = actionButton("确认恢复", async () => {
+            confirm.disabled = true;
+            try {
+              const restored = await api.restore(backup.id, result.confirmation.token, csrfToken);
+              if (restored.status !== 200 || restored.ok !== true) throw new Error(restored.messageZh ?? "恢复失败。");
+              onRestored?.(restored);
+            } catch (error) { errorBox(output, error); confirm.disabled = false; }
+          }, { className: "danger" });
+          output.append(confirm);
+        } catch (error) { output.replaceChildren(); errorBox(output, error); view.disabled = false; }
+      });
+      card.append(view, output); list.append(card);
+    }
+  }).catch((error) => { if (list.isConnected) { list.replaceChildren(); errorBox(list, error); } });
 }
 
-export function renderPanel({ container, panel, store, onNavigate, imageSession }) {
-  const rerender = () => renderPanel({ container, panel, store, onNavigate, imageSession });
+export function renderPanel({ container, panel, store, onNavigate, imageSession, api, csrfToken, onRestored }) {
+  const rerender = () => renderPanel({ container, panel, store, onNavigate, imageSession, api, csrfToken, onRestored });
   container.replaceChildren();
   const context = {
     container,
@@ -1051,6 +1090,9 @@ export function renderPanel({ container, panel, store, onNavigate, imageSession 
     store,
     onNavigate,
     imageSession,
+    api,
+    csrfToken,
+    onRestored,
     rerender,
     state: store.getState(),
   };

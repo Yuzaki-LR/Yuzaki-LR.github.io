@@ -2,7 +2,8 @@
 <html lang="zh-CN">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>本地内容编辑器</title><link rel="stylesheet" href="/assets/styles.css"><script type="module" src="/modules/app.mjs"></script></head>
 <body>
-  <header class="topbar"><div><span class="edition">YUNXI WU · LOCAL EDITION</span><h1>内容校样台</h1></div><p id="draft-status" role="status">正在读取规范内容…</p></header>
+  <header class="topbar"><div><span class="edition">YUNXI WU · LOCAL EDITION</span><h1>内容校样台</h1></div><div class="save-area"><p id="draft-status" role="status">正在读取规范内容…</p><p id="save-phase" role="status"></p><button id="save-button" type="button" disabled>保存并生成网站</button></div></header>
+  <section id="conflict-panel" class="conflict-panel" aria-live="polite" hidden></section>
   <main class="editor-shell">
     <nav class="editor-nav" aria-label="编辑区域">
       <button type="button" data-panel="site">全站资料</button><button type="button" data-route="/">首页</button><button type="button" data-route="/research/">研究与稿件</button><button type="button" data-route="/projects/">项目</button><button type="button" data-panel="appearance">外观</button><button type="button" data-panel="backup">备份</button>
