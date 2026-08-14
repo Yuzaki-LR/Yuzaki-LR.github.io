@@ -10,7 +10,7 @@ import { createTestWorkspace } from './helpers.mjs';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const textExtensions = new Set([
-  '.astro', '.bat', '.css', '.html', '.js', '.json', '.md', '.mjs', '.py', '.ts', '.txt', '.yaml', '.yml',
+  '.astro', '.bat', '.css', '.html', '.js', '.json', '.md', '.mjs', '.py', '.svg', '.ts', '.txt', '.yaml', '.yml',
 ]);
 const textBasenames = new Set(['.gitattributes', '.gitignore']);
 const binaryExtensions = new Set(['.png']);

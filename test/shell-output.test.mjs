@@ -17,6 +17,12 @@ test('homepage renders the approved academic shell', async () => {
   assert.doesNotMatch(html, /\bCV\b/i);
 });
 
+test('homepage declares an emitted favicon to avoid an implicit missing favicon request', async () => {
+  const html = await readDist('index.html');
+  assert.match(html, /<link rel="icon" href="\/favicon\.svg"/);
+  assert.match(await readDist('favicon.svg'), /<svg\b/);
+});
+
 test('built CSS uses the approved restrained typography', async () => {
   const css = await readBuiltCss();
   assert.match(css, /Times New Roman/);

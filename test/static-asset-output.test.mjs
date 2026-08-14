@@ -342,6 +342,7 @@ test('fresh build under an Astro base emits base-aware internal navigation and f
   assert.equal(code, 0, stderr);
   const html = await readFile(path.join(workspace.outputRoot, 'index.html'), 'utf8');
   assert.match(html, /href="\/repo\/"/);
+  assert.match(html, /<link rel="icon" href="\/repo\/favicon\.svg"/);
   assert.doesNotMatch(html, /href="\/\/repo\//);
   const css = (await readFile(path.join(workspace.outputRoot, '_astro', (await (await import('node:fs/promises')).readdir(path.join(workspace.outputRoot, '_astro'))).find((name) => name.endsWith('.css'))), 'utf8'));
   assert.match(css, /outline:3px solid var\(--focus\)/);
