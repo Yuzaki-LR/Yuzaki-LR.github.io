@@ -533,6 +533,218 @@ test('candidate builder uses an isolated Node process and sanitises bounded fail
   );
 });
 
+test('candidate builder close aborts and awaits every active child build', async (t) => {
+  const workspace = await transactionWorkspace(t);
+  const operationRoot = path.join(workspace.backupRoot, '20260812T120000Z-0099');
+  const candidateContentRoot = path.join(operationRoot, '.candidate');
+  const candidateDistRoot = path.join(operationRoot, 'candidate-dist');
+  await mkdir(candidateContentRoot, { recursive: true });
+  await mkdir(candidateDistRoot);
+  let childStarted;
+  const started = new Promise((resolve) => { childStarted = resolve; });
+  let childExited = false;
+  const builder = createCandidateBuilder({
+    projectRoot: workspace.root,
+    runProcess: async (_executable, _args, options) => {
+      childStarted();
+      await new Promise((resolve) => options.signal.addEventListener('abort', resolve, { once: true }));
+      childExited = true;
+      throw Object.assign(new Error('candidate child aborted'), { code: 'ABORT_ERR' });
+    },
+  });
+  const build = builder({
+    projectRoot: workspace.root,
+    operationRoot,
+    contentRoot: candidateContentRoot,
+    distRoot: candidateDistRoot,
+  });
+  await started;
+
+  const firstClose = builder.close();
+  const secondClose = builder.close();
+  assert.equal(firstClose, secondClose);
+  await firstClose;
+
+  assert.equal(childExited, true);
+  await assert.rejects(build, (error) => error?.code === 'CANDIDATE_BUILD_FAILED');
+  await assert.rejects(
+    builder({ projectRoot: workspace.root, operationRoot, contentRoot: candidateContentRoot, distRoot: candidateDistRoot }),
+    (error) => error?.code === 'CANDIDATE_BUILD_FAILED',
+  );
+});
+
+test('candidate builder close fails closed when active tree termination is unproven', async (t) => {
+  const workspace = await transactionWorkspace(t);
+  const operationRoot = path.join(workspace.backupRoot, '20260812T120000Z-0097');
+  const candidateContentRoot = path.join(operationRoot, '.candidate');
+  const candidateDistRoot = path.join(operationRoot, 'candidate-dist');
+  await mkdir(candidateContentRoot, { recursive: true });
+  await mkdir(candidateDistRoot);
+  let started;
+  const childStarted = new Promise((resolve) => { started = resolve; });
+  const builder = createCandidateBuilder({
+    projectRoot: workspace.root,
+    runProcess: async (_executable, _args, options) => {
+      started();
+      await new Promise((resolve) => options.signal.addEventListener('abort', resolve, { once: true }));
+      throw Object.assign(new Error('fixed termination failure'), { code: 'CANDIDATE_TERMINATION_FAILED' });
+    },
+  });
+  const build = builder({ projectRoot: workspace.root, operationRoot, contentRoot: candidateContentRoot, distRoot: candidateDistRoot });
+  await childStarted;
+
+  await assert.rejects(builder.close(), (error) => error instanceof AggregateError
+    && error.errors.some((entry) => entry?.code === 'CANDIDATE_TERMINATION_FAILED'));
+  await assert.rejects(build, (error) => error?.code === 'CANDIDATE_TERMINATION_FAILED');
+});
+
+test('candidate builder close causally awaits its tree terminator', { timeout: 10_000 }, async (t) => {
+  const workspace = await transactionWorkspace(t);
+  const operationRoot = path.join(workspace.backupRoot, '20260812T120000Z-0096');
+  const candidateContentRoot = path.join(operationRoot, '.candidate');
+  const candidateDistRoot = path.join(operationRoot, 'candidate-dist');
+  const astroRoot = path.join(workspace.root, 'node_modules', 'astro', 'bin');
+  await mkdir(candidateContentRoot, { recursive: true });
+  await mkdir(candidateDistRoot);
+  await mkdir(astroRoot, { recursive: true });
+  await writeFile(path.join(astroRoot, 'astro.mjs'), [
+    "import { writeFile } from 'node:fs/promises';",
+    "import path from 'node:path';",
+    "await writeFile(path.join(process.env.EDITOR_OPERATION_ROOT, 'runner-started'), 'started');",
+    'setInterval(() => {}, 1000);',
+  ].join('\n'));
+  let markTerminationStarted;
+  const terminationStarted = new Promise((resolve) => { markTerminationStarted = resolve; });
+  let releaseTermination;
+  const terminationGate = new Promise((resolve) => { releaseTermination = resolve; });
+  let terminationFinished = false;
+  const builder = createCandidateBuilder({
+    projectRoot: workspace.root,
+    terminateTree: async (child) => {
+      markTerminationStarted();
+      child.kill('SIGTERM');
+      if (child.exitCode === null && child.signalCode === null) await new Promise((resolve) => child.once('close', resolve));
+      await terminationGate;
+      terminationFinished = true;
+    },
+  });
+  const build = builder({ projectRoot: workspace.root, operationRoot, contentRoot: candidateContentRoot, distRoot: candidateDistRoot });
+  const marker = path.join(operationRoot, 'runner-started');
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (await readFile(marker, 'utf8').then(() => true, () => false)) break;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  assert.equal(await readFile(marker, 'utf8'), 'started');
+
+  const closing = builder.close();
+  assert.equal(await Promise.race([terminationStarted.then(() => true), new Promise((resolve) => setTimeout(() => resolve(false), 500))]), true);
+  let closeSettled = false;
+  void closing.finally(() => { closeSettled = true; });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(closeSettled, false);
+  releaseTermination();
+  await closing;
+  assert.equal(terminationFinished, true);
+  await assert.rejects(build, (error) => error?.code === 'CANDIDATE_BUILD_FAILED');
+});
+
+test('candidate builder close rejects boundedly when tree termination fails before child close', { skip: process.platform !== 'win32', timeout: 10_000 }, async (t) => {
+  const workspace = await transactionWorkspace(t);
+  const operationRoot = path.join(workspace.backupRoot, '20260812T120000Z-0095');
+  const candidateContentRoot = path.join(operationRoot, '.candidate');
+  const candidateDistRoot = path.join(operationRoot, 'candidate-dist');
+  const astroRoot = path.join(workspace.root, 'node_modules', 'astro', 'bin');
+  await mkdir(candidateContentRoot, { recursive: true });
+  await mkdir(candidateDistRoot);
+  await mkdir(astroRoot, { recursive: true });
+  await writeFile(path.join(astroRoot, 'astro.mjs'), [
+    "import { writeFile } from 'node:fs/promises';",
+    "import path from 'node:path';",
+    "await writeFile(path.join(process.env.EDITOR_OPERATION_ROOT, 'runner-started'), String(process.pid));",
+    'setInterval(() => {}, 1000);',
+  ].join('\n'));
+  let activeChild;
+  const builder = createCandidateBuilder({
+    projectRoot: workspace.root,
+    terminateTree: async (child) => {
+      activeChild = child;
+      throw Object.assign(new Error('injected tree termination failure'), { code: 'CANDIDATE_TERMINATION_FAILED' });
+    },
+  });
+  const build = builder({ projectRoot: workspace.root, operationRoot, contentRoot: candidateContentRoot, distRoot: candidateDistRoot });
+  const marker = path.join(operationRoot, 'runner-started');
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (await readFile(marker, 'utf8').then(() => true, () => false)) break;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  assert.match(await readFile(marker, 'utf8'), /^\d+$/);
+
+  const closing = builder.close();
+  try {
+    const result = await Promise.race([
+      closing.then(() => ({ state: 'resolved' }), (error) => ({ state: 'rejected', error })),
+      new Promise((resolve) => setTimeout(() => resolve({ state: 'timeout' }), 750)),
+    ]);
+    assert.equal(result.state, 'rejected');
+    assert.ok(result.error instanceof AggregateError);
+    assert.ok(result.error.errors.some((entry) => entry?.code === 'CANDIDATE_TERMINATION_FAILED'));
+  } finally {
+    if (activeChild?.pid && activeChild.exitCode === null && activeChild.signalCode === null) {
+      assert.ok(typeof process.env.SystemRoot === 'string' && path.isAbsolute(process.env.SystemRoot));
+      await new Promise((resolve, reject) => {
+        const killer = spawn(path.join(process.env.SystemRoot, 'System32', 'taskkill.exe'), ['/PID', String(activeChild.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
+        killer.once('error', reject);
+        killer.once('close', (code) => code === 0 ? resolve() : reject(new Error(`test cleanup taskkill failed: ${code}`)));
+      });
+    }
+    await Promise.allSettled([closing, build]);
+    assert.ok(!activeChild || activeChild.exitCode !== null || activeChild.signalCode !== null);
+  }
+});
+
+test('candidate builder close terminates a real child process tree', { skip: process.platform !== 'win32', timeout: 15_000 }, async (t) => {
+  const workspace = await transactionWorkspace(t);
+  const operationRoot = path.join(workspace.backupRoot, '20260812T120000Z-0098');
+  const candidateContentRoot = path.join(operationRoot, '.candidate');
+  const candidateDistRoot = path.join(operationRoot, 'candidate-dist');
+  const astroRoot = path.join(workspace.root, 'node_modules', 'astro', 'bin');
+  await mkdir(candidateContentRoot, { recursive: true });
+  await mkdir(candidateDistRoot);
+  await mkdir(astroRoot, { recursive: true });
+  await writeFile(path.join(astroRoot, 'astro.mjs'), [
+    "import { spawn } from 'node:child_process';",
+    "import { writeFile } from 'node:fs/promises';",
+    "import path from 'node:path';",
+    "const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore', windowsHide: true });",
+    "await writeFile(path.join(process.env.EDITOR_OPERATION_ROOT, 'descendant.pid'), String(child.pid));",
+    "await new Promise(() => {});",
+  ].join('\n'));
+  const builder = createCandidateBuilder({ projectRoot: workspace.root });
+  const build = builder({ projectRoot: workspace.root, operationRoot, contentRoot: candidateContentRoot, distRoot: candidateDistRoot });
+  const pidPath = path.join(operationRoot, 'descendant.pid');
+  let descendantPid;
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    try { descendantPid = Number(await readFile(pidPath, 'utf8')); break; }
+    catch (error) { if (error?.code !== 'ENOENT') throw error; await new Promise((resolve) => setTimeout(resolve, 25)); }
+  }
+  assert.ok(Number.isSafeInteger(descendantPid));
+  const alive = () => { try { process.kill(descendantPid, 0); return true; } catch { return false; } };
+  t.after(async () => {
+    await builder.close();
+    if (alive()) await new Promise((resolve, reject) => {
+      const killer = spawn('taskkill.exe', ['/PID', String(descendantPid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
+      killer.once('error', reject);
+      killer.once('close', (code) => code === 0 ? resolve() : reject(new Error(`test cleanup taskkill failed: ${code}`)));
+    });
+    assert.equal(alive(), false, 'test cleanup must leave no descendant');
+  });
+  assert.equal(alive(), true);
+
+  await builder.close();
+  await assert.rejects(build, (error) => error?.code === 'CANDIDATE_BUILD_FAILED');
+  assert.equal(alive(), false);
+});
+
 test('candidate builder runs real Astro against only the operation content and output roots', async (t) => {
   const workspace = await transactionWorkspace(t);
   const operationRoot = path.join(workspace.backupRoot, '20260812T120000Z-0002');
@@ -591,6 +803,80 @@ test('candidate builder rejects a project source reparse point before process ex
   await assert.rejects(builder({ projectRoot: workspace.root, operationRoot, contentRoot: candidateContentRoot, distRoot: candidateDistRoot }), (error) => error?.code === 'CANDIDATE_BUILD_FAILED');
   assert.equal(executions, 0);
   assert.equal(await readFile(path.join(outside, 'sentinel.txt'), 'utf8'), 'outside bytes\n');
+});
+
+test('candidate source manifest excludes only the ignored portable Node runtime tree', async (t) => {
+  const workspace = await transactionWorkspace(t);
+  const operationRoot = path.join(workspace.backupRoot, '20260812T120000Z-0004');
+  const candidateContentRoot = path.join(operationRoot, '.candidate');
+  const candidateDistRoot = path.join(operationRoot, 'candidate-dist');
+  const portableNode = path.join(workspace.root, '.local-editor', 'tools', 'node', 'node.exe');
+  await mkdir(candidateContentRoot, { recursive: true });
+  await mkdir(candidateDistRoot);
+  await mkdir(path.dirname(portableNode), { recursive: true });
+  await writeFile(portableNode, 'portable runtime before\n');
+  const builder = createCandidateBuilder({
+    projectRoot: workspace.root,
+    runProcess: async () => {
+      await writeFile(portableNode, 'portable runtime after\n');
+      await writeFile(path.join(candidateDistRoot, 'index.html'), 'candidate\n');
+      return { exitCode: 0, stdout: '', stderr: '' };
+    },
+  });
+  assert.deepEqual(await builder({
+    projectRoot: workspace.root,
+    operationRoot,
+    contentRoot: candidateContentRoot,
+    distRoot: candidateDistRoot,
+  }), { ok: true, diagnostic: { code: 'CANDIDATE_BUILD_OK' } });
+  assert.equal(await readFile(portableNode, 'utf8'), 'portable runtime after\n');
+});
+
+test('candidate source manifest still detects writes beside the portable Node runtime tree', async (t) => {
+  const workspace = await transactionWorkspace(t);
+  const operationRoot = path.join(workspace.backupRoot, '20260812T120000Z-0004');
+  const candidateContentRoot = path.join(operationRoot, '.candidate');
+  const candidateDistRoot = path.join(operationRoot, 'candidate-dist');
+  const protectedRecord = path.join(workspace.root, '.local-editor', 'tools', 'install-record.json');
+  await mkdir(candidateContentRoot, { recursive: true });
+  await mkdir(candidateDistRoot);
+  await mkdir(path.dirname(protectedRecord), { recursive: true });
+  await writeFile(protectedRecord, 'record before\n');
+  const builder = createCandidateBuilder({ projectRoot: workspace.root, runProcess: async () => {
+    await writeFile(protectedRecord, 'record after\n');
+    await writeFile(path.join(candidateDistRoot, 'index.html'), 'candidate\n');
+    return { exitCode: 0, stdout: '', stderr: '' };
+  } });
+  await assert.rejects(builder({
+    projectRoot: workspace.root,
+    operationRoot,
+    contentRoot: candidateContentRoot,
+    distRoot: candidateDistRoot,
+  }), (error) => error?.code === 'CANDIDATE_BUILD_FAILED');
+});
+
+test('candidate source manifest never treats a portable runtime junction as ignored', async (t) => {
+  const workspace = await transactionWorkspace(t);
+  const operationRoot = path.join(workspace.backupRoot, '20260812T120000Z-0004');
+  const candidateContentRoot = path.join(operationRoot, '.candidate');
+  const candidateDistRoot = path.join(operationRoot, 'candidate-dist');
+  const portableRoot = path.join(workspace.root, '.local-editor', 'tools', 'node');
+  const outside = path.join(workspace.parent, 'outside-portable-runtime');
+  await mkdir(candidateContentRoot, { recursive: true });
+  await mkdir(candidateDistRoot);
+  await mkdir(path.dirname(portableRoot), { recursive: true });
+  await mkdir(outside);
+  await writeFile(path.join(outside, 'node.exe'), 'outside runtime\n');
+  await symlink(outside, portableRoot, 'junction');
+  let executions = 0;
+  const builder = createCandidateBuilder({ projectRoot: workspace.root, runProcess: async () => { executions += 1; return { exitCode: 0 }; } });
+  await assert.rejects(builder({
+    projectRoot: workspace.root,
+    operationRoot,
+    contentRoot: candidateContentRoot,
+    distRoot: candidateDistRoot,
+  }), (error) => error?.code === 'CANDIDATE_BUILD_FAILED');
+  assert.equal(executions, 0);
 });
 
 test('candidate build permissions deny create, modify, and delete outside the active operation', async (t) => {

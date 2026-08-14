@@ -22,6 +22,17 @@ function securityHeaders(response) { response.setHeader('Cache-Control','no-stor
 function send(response,status,body='',type='application/json; charset=utf-8') { response.statusCode=status; response.setHeader('Content-Type',type); response.end(body); }
 function error(response,status,value) { send(response,status,JSON.stringify(serializePublicError(typeof value==='string'?{code:value}:value))); }
 function recoveryRequired() { const messageZh='检测到无法自动恢复的编辑记录，请保留现场并人工检查。'; return Object.assign(new Error(messageZh),{code:'RECOVERY_REQUIRED',messageZh}); }
+function startupAborted() { return Object.assign(new Error('editor startup aborted'),{code:'STARTUP_ABORTED'}); }
+function abortable(value,signal){
+  if(!signal)return Promise.resolve(value);
+  if(signal.aborted)return Promise.reject(startupAborted());
+  return new Promise((resolve,reject)=>{
+    const onAbort=()=>finish(startupAborted());
+    const finish=(failure,result)=>{signal.removeEventListener('abort',onAbort);if(failure)reject(failure);else resolve(result);};
+    signal.addEventListener('abort',onAbort,{once:true});
+    Promise.resolve(value).then(result=>finish(undefined,result),finish);
+  });
+}
 
 function oneHeader(request,name){const values=[];for(let index=0;index<(request.rawHeaders?.length??0);index+=2)if(request.rawHeaders[index].toLowerCase()===name)values.push(request.rawHeaders[index+1]);return values.length===1?values[0]:undefined;}
 async function readDeclared(request,length){const chunks=[];let total=0;for await(const chunk of request){total+=chunk.length;if(total>length)throw Object.assign(new Error('上传字节超出声明长度'),{code:'BAD_INPUT',field:'image',details:{reason:'invalid'}});chunks.push(chunk);}if(total!==length)throw Object.assign(new Error('上传字节与声明长度不一致'),{code:'BAD_INPUT',field:'image',details:{reason:'invalid'}});return Buffer.concat(chunks,total);}
@@ -93,19 +104,20 @@ function candidatePayload(value,{allowConflict=false}={}){
   return{bundle,conflictResolutionToken};
 }
 
-export async function startEditor({ projectRoot, preferredPort=0, token, csrfToken, repositoryService, transactionService, uploadStore=createUploadStore(), imageDecoder=sanitiseImage }) {
+export async function startEditor({ projectRoot, preferredPort=0, token, csrfToken, repositoryService, transactionService, uploadStore=createUploadStore(), imageDecoder=sanitiseImage, signal }) {
   void projectRoot;
   if(!transactionService || typeof transactionService.recoverBeforeListen!=='function' || typeof transactionService.runMutation!=='function'){
     try{uploadStore.close();}catch{}
     throw recoveryRequired();
   }
   let startup;
-  try{startup=await transactionService.recoverBeforeListen();}
-  catch{try{uploadStore.close();}catch{}throw recoveryRequired();}
+  try{startup=await abortable(transactionService.recoverBeforeListen(),signal);}
+  catch(value){try{uploadStore.close();}catch{}if(value?.code==='STARTUP_ABORTED')throw value;throw recoveryRequired();}
   if(!startup?.ok || startup.recoveryOnly){
     try{uploadStore.close();}catch{}
     throw recoveryRequired();
   }
+  if(signal?.aborted){try{uploadStore.close();}catch{}throw startupAborted();}
   const generated=createSessionSecrets(); token ??= generated.sessionToken; csrfToken ??= generated.csrfToken;
   const session={token:createSessionSecrets().sessionToken,transactionId:uploadStore.sessionId,csrfToken}; let startupToken=token; let origin;
   const server=http.createServer((request,response)=>void handle(request,response).catch(()=>error(response,500,'INTERNAL_ERROR')));
@@ -185,7 +197,28 @@ export async function startEditor({ projectRoot, preferredPort=0, token, csrfTok
     if(asset) { const guarded=guardRequest({request,origin,routeClass:'navigation',session}); if(!guarded.ok)return error(response,guarded.status,guarded.code); return send(response,200,await readFile(asset.file,'utf8'),asset.type); }
     return error(response,404,'NOT_FOUND');
   }
-  await new Promise((resolve,reject)=>{server.once('error',reject);server.listen({host:'127.0.0.1',port:preferredPort},resolve);});
+  try{
+    await new Promise((resolve,reject)=>{
+      let settled=false,abortTimer;
+      const cleanup=()=>{clearTimeout(abortTimer);server.off('error',onError);server.off('listening',onListening);server.off('close',onClose);signal?.removeEventListener('abort',onAbort);};
+      const finish=(value,result)=>{if(settled)return;settled=true;cleanup();if(value)reject(value);else resolve(result);};
+      const onError=value=>finish(value);
+      const onListening=()=>finish();
+      const onClose=()=>finish(signal?.aborted?startupAborted():new Error('editor listener closed before ready'));
+      const onAbort=()=>{
+        if(settled)return;
+        try{server.close();}catch{}
+        abortTimer=setTimeout(()=>finish(startupAborted()),1_000);
+      };
+      server.once('error',onError);
+      server.once('listening',onListening);
+      server.once('close',onClose);
+      signal?.addEventListener('abort',onAbort,{once:true});
+      if(signal?.aborted){onAbort();return;}
+      server.listen({host:'127.0.0.1',port:preferredPort});
+    });
+  }catch(value){try{server.close();}catch{}try{uploadStore.close();}catch{}if(signal?.aborted)throw startupAborted();throw value;}
+  if(signal?.aborted){await new Promise(resolve=>server.close(()=>resolve()));try{uploadStore.close();}catch{}throw startupAborted();}
   const address=server.address(); if(!address || typeof address==='string' || address.address!=='127.0.0.1') { server.close(); throw new Error('editor did not bind loopback'); }
   origin=`http://${address.address}:${address.port}`;
   let closed=false; const close=()=>new Promise((resolve,reject)=>{if(closed||!server.listening){closed=true;uploadStore.close();return resolve();}server.close(e=>{if(e)reject(e);else{closed=true;uploadStore.close();resolve();}});});

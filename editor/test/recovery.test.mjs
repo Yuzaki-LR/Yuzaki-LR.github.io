@@ -195,6 +195,51 @@ test('the editor refuses to listen when the transaction recovery gate is omitted
   await cannotConnect(port);
 });
 
+test('startup abort in the real Node listen window rejects boundedly and leaves no listener', { timeout: 5_000 }, async () => {
+  const port = await unusedPort();
+  const controller = new AbortController();
+  const originalListen = http.Server.prototype.listen;
+  let listeningServer;
+  let uploadCloses = 0;
+  http.Server.prototype.listen = function listenAndAbort(...args) {
+    const result = originalListen.apply(this, args);
+    listeningServer = this;
+    controller.abort();
+    return result;
+  };
+  let outcome;
+  try {
+    const startup = startEditor({
+      projectRoot: process.cwd(),
+      preferredPort: port,
+      token: 'startup-A',
+      csrfToken: 'csrf-A',
+      repositoryService: { bootstrap: async () => ({ csrfToken: 'csrf-A' }) },
+      transactionService: {
+        recoverBeforeListen: async () => ({ ok: true, recoveryOnly: false, results: [] }),
+        runMutation: async (action) => action(),
+      },
+      uploadStore: { sessionId: 'a'.repeat(32), close: () => { uploadCloses += 1; } },
+      signal: controller.signal,
+    });
+    outcome = await Promise.race([
+      startup.then(() => ({ state: 'resolved' }), (error) => ({ state: 'rejected', error })),
+      new Promise((resolve) => setTimeout(() => resolve({ state: 'timeout' }), 750)),
+    ]);
+  } finally {
+    http.Server.prototype.listen = originalListen;
+    if (listeningServer?.listening) await new Promise((resolve, reject) => listeningServer.close((error) => error ? reject(error) : resolve()));
+  }
+  assert.equal(outcome.state, 'rejected');
+  assert.equal(outcome.error?.code, 'STARTUP_ABORTED');
+  assert.equal(listeningServer?.listening, false);
+  assert.equal(listeningServer?.listenerCount('error'), 0);
+  assert.deepEqual(listeningServer?.rawListeners('listening').filter((listener) => (listener.listener ?? listener).name === 'onListening'), []);
+  assert.equal(listeningServer?.listenerCount('close'), 0);
+  assert.equal(uploadCloses, 1);
+  await cannotConnect(port);
+});
+
 test('the command entrypoint emits only the fixed Chinese recovery instruction and no URL', async () => {
   let stdout = '';
   let stderr = '';
@@ -232,10 +277,11 @@ test('the command entrypoint creates its confined backup root and recovers befor
       recovered = true;
       return { origin: 'http://127.0.0.1:12345', close: async () => {} };
     },
+    env: { EDITOR_NO_OPEN: '1', PATH: path.dirname(process.execPath) },
     stdout: { write(value) { stdout += value; } }, stderr: { write() { assert.fail('successful startup must not write stderr'); } },
   });
   assert.equal(result.ok, true); assert.equal(recovered, true);
-  assert.equal(stdout, 'http://127.0.0.1:12345/?session=startup-A\n');
+  assert.equal(stdout, 'EDITOR_READY=http://127.0.0.1:12345/?session=startup-A\n');
   assert.deepEqual(await readdir(path.join(workspace.root, '.local-editor', 'backups')), []);
 });
 
@@ -248,10 +294,11 @@ test('the command entrypoint rejects a local-editor junction before any outside 
   const result = await runEditorMain({
     projectRoot: workspace.root,
     start: async () => { started = true; throw new Error('must not start'); },
+    env: { EDITOR_NO_OPEN: '1', PATH: path.dirname(process.execPath) },
     stdout: { write() { assert.fail('unsafe startup must not emit URL'); } }, stderr: { write(value) { stderr += value; } },
   });
   assert.deepEqual(result, { ok: false, exitCode: 1 }); assert.equal(started, false);
-  assert.equal(stderr, '检测到无法自动恢复的编辑记录，请保留现场并人工检查。\n');
+  assert.equal(stderr, '网站编辑器启动失败，请保留此窗口中的提示并联系维护者。\n');
   assert.deepEqual(await readdir(outside), []);
 });
 
