@@ -2,130 +2,141 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
+import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+import { createTestWorkspace } from './helpers.mjs';
 
+const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const textExtensions = new Set([
-  '.astro',
-  '.css',
-  '.gitignore',
-  '.html',
-  '.js',
-  '.json',
-  '.md',
-  '.mjs',
-  '.py',
-  '.ts',
-  '.txt',
-  '.yaml',
-  '.yml',
+  '.astro', '.bat', '.css', '.html', '.js', '.json', '.md', '.mjs', '.py', '.ts', '.txt', '.yaml', '.yml',
 ]);
+const textBasenames = new Set(['.gitattributes', '.gitignore']);
 const binaryExtensions = new Set(['.png']);
 const approvedBinaryPaths = new Set(['editor/test/fixtures/oriented.jpg', 'editor/test/fixtures/corrupt.tif']);
-function approvedBinaryPath(relativePath){return approvedBinaryPaths.has(relativePath);}
-
 const approvedTitlePhraseOracles = new Set([
-  'Computer Vision',
-  'Future Ocean Habitat',
-  'Group Coordinator',
-  'Ongoing Work',
-  'Research Interests',
-  'Times New Roman',
-  'Yunxi Wu',
+  'Computer Vision', 'Future Ocean Habitat', 'Group Coordinator', 'Ongoing Work', 'Research Interests', 'Times New Roman', 'Yunxi Wu',
 ]);
-
 const sevenDigitIdentifier = /\b\d{7}\b/u;
 const titlePhraseOracle = /\/(?<body>[A-Z][a-z]+(?: [A-Z][a-z]+){1,2}(?:\|[A-Z][a-z]+(?: [A-Z][a-z]+){1,2})*)\/[dgimsuvy]*/gu;
 
-function trackedPaths() {
-  return execFileSync('git', ['-c', `safe.directory=${projectRoot}`, 'ls-files', '-z'], {
-    cwd: projectRoot,
+function git(argumentsList, { root = projectRoot, indexFile, input } = {}) {
+  return execFileSync('git', ['-c', `safe.directory=${root}`, ...argumentsList], {
+    cwd: root,
     encoding: 'utf8',
-  }).split('\0').filter(Boolean);
+    input,
+    env: { ...process.env, ...(indexFile ? { GIT_INDEX_FILE: indexFile } : {}) },
+  });
 }
 
-function privacyViolations(relativePath, source) {
-  const violations = [];
+function gitTrackedFilesWithProcessLocalSafeDirectory({ root = projectRoot, indexFile } = {}) {
+  return git(['ls-files', '-z'], { root, indexFile }).split('\0').filter(Boolean);
+}
+
+function classifyTrackedPath(relativePath) {
+  if (approvedBinaryPaths.has(relativePath) || binaryExtensions.has(path.extname(relativePath).toLowerCase())) return 'binary';
+  if (textBasenames.has(path.basename(relativePath)) || textExtensions.has(path.extname(relativePath).toLowerCase())) return 'text';
+  return 'unknown';
+}
+
+function assertPrivacySafeText(source, relativePath) {
   const normalizedSource = source.normalize('NFKC');
-
-  if (sevenDigitIdentifier.test(normalizedSource)) {
-    violations.push(`${relativePath}: contains a seven-digit identifier`);
-  }
-
+  assert.doesNotMatch(normalizedSource, sevenDigitIdentifier, `${relativePath}: contains a seven-digit identifier`);
   for (const match of normalizedSource.matchAll(titlePhraseOracle)) {
     const phrases = match.groups.body.split('|');
-    if (phrases.some((phrase) => !approvedTitlePhraseOracles.has(phrase))) {
-      violations.push(`${relativePath}: contains a non-public personal-name oracle`);
-      break;
-    }
+    assert.equal(
+      phrases.some((phrase) => !approvedTitlePhraseOracles.has(phrase)),
+      false,
+      `${relativePath}: contains a non-public personal-name oracle`,
+    );
   }
-
-  return violations;
 }
 
-function scanIndexedAndWorkingTexts({ paths = trackedPaths(), indexText = (relativePath) => execFileSync('git', ['-c', `safe.directory=${projectRoot}`, 'show', `:${relativePath}`], { cwd: projectRoot, encoding: 'utf8' }), workingText = (relativePath) => {
-  const target = path.join(projectRoot, relativePath);
-  return existsSync(target) ? readFileSync(target, 'utf8') : undefined;
-} } = {}) {
-  const unclassified = [];
-  const violations = [];
+function scanIndexedAndWorkingTexts({
+  root = projectRoot,
+  indexFile,
+  paths = gitTrackedFilesWithProcessLocalSafeDirectory({ root, indexFile }),
+  indexText = (relativePath) => git(['show', `:${relativePath}`], { root, indexFile }),
+  workingText = (relativePath) => {
+    const target = path.join(root, ...relativePath.split('/'));
+    return existsSync(target) ? readFileSync(target, 'utf8') : undefined;
+  },
+} = {}) {
   for (const relativePath of paths) {
-    const extension = path.extname(relativePath);
-    if (binaryExtensions.has(extension) || approvedBinaryPath(relativePath)) continue;
-    if (relativePath !== '.gitignore' && !textExtensions.has(extension)) { unclassified.push(relativePath); continue; }
+    const classification = classifyTrackedPath(relativePath);
+    assert.notEqual(classification, 'unknown', `unclassified tracked file: ${relativePath}`);
+    if (classification !== 'text') continue;
     const indexed = indexText(relativePath);
-    violations.push(...privacyViolations(`${relativePath} (index)`, indexed));
+    assertPrivacySafeText(indexed, `${relativePath} (index)`);
     const working = workingText(relativePath);
-    if (working !== undefined && working !== indexed) violations.push(...privacyViolations(`${relativePath} (working tree)`, working));
+    if (working !== undefined && working !== indexed) assertPrivacySafeText(working, `${relativePath} (working tree)`);
   }
-  if (unclassified.length) throw new Error(`unclassified tracked files: ${unclassified.join(', ')}`);
-  return violations;
 }
 
-test('every Git-tracked text file excludes private identifiers and non-public name oracles', () => {
-  assert.deepEqual(scanIndexedAndWorkingTexts(), []);
+test('every tracked file is classified and privacy-scanned', () => {
+  scanIndexedAndWorkingTexts();
 });
 
-test('repository privacy scan rejects sanitized identifier and collaborator-name sentinels', () => {
-  const identifierSentinel = ['1234', '567'].join('');
-  const collaboratorSentinel = ['Private', 'Collaborator'].join(' ');
-  const syntheticSource = `student: ${identifierSentinel}\npattern: /${collaboratorSentinel}/i`;
+test('privacy scan rejects a generic seven-digit identifier in a copied tracked-text fixture', async (t) => {
+  const workspace = await createTestWorkspace();
+  t.after(workspace.cleanup);
+  git(['init'], { root: workspace.root });
+  git(['add', 'src'], { root: workspace.root });
+  const fixture = path.join(workspace.root, 'src', 'content', 'site.yml');
+  await writeFile(fixture, `${readFileSync(fixture, 'utf8')}\nprivacy-sentinel: ${['765', '4321'].join('')}\n`);
 
-  assert.deepEqual(privacyViolations('synthetic-sentinel.txt', syntheticSource), [
-    'synthetic-sentinel.txt: contains a seven-digit identifier',
-    'synthetic-sentinel.txt: contains a non-public personal-name oracle',
-  ]);
+  assert.throws(
+    () => scanIndexedAndWorkingTexts({ root: workspace.root }),
+    /site\.yml \(working tree\): contains a seven-digit identifier/,
+  );
+});
+
+test('privacy scan rejects a dynamically constructed non-public name oracle in a copied tracked-text fixture', async (t) => {
+  const workspace = await createTestWorkspace();
+  t.after(workspace.cleanup);
+  git(['init'], { root: workspace.root });
+  git(['add', 'src'], { root: workspace.root });
+  const fixture = path.join(workspace.root, 'src', 'content', 'site.yml');
+  const nonPublicNameOracle = ['Private', 'Collaborator'].join(' ');
+  await writeFile(fixture, `${readFileSync(fixture, 'utf8')}\nprivacy-oracle: /${nonPublicNameOracle}/i\n`);
+
+  assert.throws(
+    () => scanIndexedAndWorkingTexts({ root: workspace.root }),
+    /site\.yml \(working tree\): contains a non-public personal-name oracle/,
+  );
+});
+
+test('privacy scan fails closed for an unclassified extension in a sentinel-protected alternate Git index', async (t) => {
+  const workspace = await createTestWorkspace();
+  t.after(workspace.cleanup);
+  git(['init'], { root: workspace.root });
+  await mkdir(path.join(workspace.root, 'notes'), { recursive: true });
+  await writeFile(path.join(workspace.root, 'notes', 'privacy-sentinel.private'), 'safe alternate-index fixture\n');
+  const alternateIndex = path.join(workspace.parent, 'privacy-sentinel.index');
+  git(['read-tree', '--empty'], { root: workspace.root, indexFile: alternateIndex });
+  const objectId = git(['hash-object', '-w', '--stdin'], {
+    root: workspace.root,
+    input: 'safe alternate-index fixture\n',
+  }).trim();
+  git(['update-index', '--add', '--cacheinfo', `100644,${objectId},notes/privacy-sentinel.private`], {
+    root: workspace.root,
+    indexFile: alternateIndex,
+  });
+
+  assert.throws(
+    () => scanIndexedAndWorkingTexts({ root: workspace.root, indexFile: alternateIndex }),
+    /unclassified tracked file: notes\/privacy-sentinel\.private/,
+  );
 });
 
 test('privacy scan retains an index-only tracked source when its working-tree file is absent', () => {
-  const identifierSentinel = ['1234', '567'].join('');
-  assert.deepEqual(scanIndexedAndWorkingTexts({
-    paths: ['deleted.md'],
-    indexText: () => `student: ${identifierSentinel}`,
-    workingText: () => undefined,
-  }), ['deleted.md (index): contains a seven-digit identifier']);
-});
-
-test('repository privacy scan classifies every tracked source, test, doc, workflow, and config file', () => {
-  const textPathSentinel = ['docs', 'sentinel.md'].join('/');
-  const binaryPathSentinel = ['public', 'sentinel.png'].join('/');
-  const jpegFixtureSentinel = ['editor', 'test', 'fixtures', 'sentinel.jpg'].join('/');
-  const tiffFixtureSentinel = ['editor', 'test', 'fixtures', 'sentinel.tif'].join('/');
-  const unclassifiedPathSentinel = ['docs', 'sentinel.private'].join('/');
-
-  assert.deepEqual([...binaryExtensions].sort(), ['.png']);
-  assert.equal(typeof approvedBinaryPath, 'function');
-  assert.equal(approvedBinaryPath('editor/test/fixtures/oriented.jpg'), true);
-  assert.equal(approvedBinaryPath('editor/test/fixtures/corrupt.tif'), true);
-  assert.equal(approvedBinaryPath('future/sentinel.jpg'), false);
-  assert.equal(approvedBinaryPath('future/sentinel.tif'), false);
-  for (const future of ['future/sentinel.jpg', 'future/sentinel.tif']) assert.throws(() => scanIndexedAndWorkingTexts({paths:[future],indexText:()=>'',workingText:()=>undefined}), /unclassified tracked files/);
-  assert.equal(textExtensions.has(path.extname(textPathSentinel)), true);
-  assert.equal(binaryExtensions.has(path.extname(binaryPathSentinel)), true);
-  assert.equal(binaryExtensions.has(path.extname(jpegFixtureSentinel)), false);
-  assert.equal(binaryExtensions.has(path.extname(tiffFixtureSentinel)), false);
-  assert.equal(textExtensions.has(path.extname(unclassifiedPathSentinel)), false);
-  assert.equal(binaryExtensions.has(path.extname(unclassifiedPathSentinel)), false);
+  assert.throws(
+    () => scanIndexedAndWorkingTexts({
+      paths: ['deleted.md'],
+      indexText: () => `student: ${['1234', '567'].join('')}`,
+      workingText: () => undefined,
+    }),
+    /deleted\.md \(index\): contains a seven-digit identifier/,
+  );
 });

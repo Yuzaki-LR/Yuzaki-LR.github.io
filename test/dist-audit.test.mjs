@@ -15,10 +15,34 @@ const distRoot = path.join(projectRoot, 'dist');
 
 const privateIdentifierPattern = /\b\d{7}\b/u;
 const nonPublicNameSentinelPattern = new RegExp(['Private', 'Collaborator'].join('\\s+'), 'i');
+const environmentVariableLocalPathPattern = /%[A-Za-z_][A-Za-z0-9_]*%(?:%[A-Za-z_][A-Za-z0-9_]*%)*\\/u;
 const generatedOrigin = 'https://generated-site.invalid';
-const trackedBinaryExtensions = new Set(['.png']);
-const approvedTrackedBinaryPaths = new Set(['editor/test/fixtures/oriented.jpg', 'editor/test/fixtures/corrupt.tif']);
-function approvedTrackedBinaryPath(relativePath){return approvedTrackedBinaryPaths.has(relativePath);}
+const quote = "'";
+const doubleQuote = '"';
+const systemRoot = ['%', 'SystemRoot', '%'].join('');
+const system32 = [systemRoot, 'System32'].join('\\');
+const reviewedLocalPathFixtureTokens = new Map([
+  [
+    'editor/test/launcher.test.mjs',
+    [[quote, ['C', 'Windows'].join(':\\\\'), quote].join('')],
+  ],
+  [
+    'editor/test/portable-runtime-installer.test.mjs',
+    [[quote, ['C', 'node.exe'].join(':/'), quote].join('')],
+  ],
+  [
+    '启动网站编辑器.bat',
+    [
+      [doubleQuote, [system32, 'findstr.exe'].join('\\'), doubleQuote].join(''),
+      [doubleQuote, [system32, 'WindowsPowerShell', 'v1.0', 'powershell.exe'].join('\\'), doubleQuote].join(''),
+    ],
+  ],
+]);
+
+function sourceForTrackedLocalPathAudit(relativePath, source) {
+  const exactTokens = reviewedLocalPathFixtureTokens.get(relativePath) ?? [];
+  return exactTokens.reduce((result, token) => result.replace(token, ''), source);
+}
 
 function routeFromHref(href, siteBase) {
   const url = new URL(href, generatedOrigin);
@@ -223,7 +247,11 @@ function decodedTextContexts($) {
 }
 
 function assertNoAbsoluteLocalPath(value, context) {
-  assert.equal(absoluteLocalPath(value), null, `${context} must exclude absolute local paths`);
+  const detectedPath = absoluteLocalPath(value);
+  const localPath = detectedPath === 'invalid percent encoding' && !environmentVariableLocalPathPattern.test(value)
+    ? null
+    : detectedPath;
+  assert.equal(localPath, null, `${context} must exclude absolute local paths`);
 }
 
 function exactlyOne(elements, description) {
@@ -571,21 +599,11 @@ test('raw and decoded generated output exclude private identifiers, unsupported 
   }
 });
 
-test('tracked privacy audit classifies only approved binary fixture extensions', () => {
-  assert.deepEqual([...trackedBinaryExtensions].sort(), ['.png']);
-  assert.equal(typeof approvedTrackedBinaryPath, 'function');
-  assert.equal(approvedTrackedBinaryPath('editor/test/fixtures/oriented.jpg'), true);
-  assert.equal(approvedTrackedBinaryPath('editor/test/fixtures/corrupt.tif'), true);
-  assert.equal(approvedTrackedBinaryPath('future/sentinel.jpg'), false);
-  assert.equal(approvedTrackedBinaryPath('future/sentinel.tif'), false);
-});
-
-test('all Git-tracked text is privacy-scanned while public-copy terminology excludes historical specifications only by scope', async () => {
-  const textExtensions = new Set(['.astro', '.css', '.gitignore', '.html', '.js', '.json', '.md', '.mjs', '.py', '.ts', '.txt', '.yaml', '.yml']);
-  const tracked = execFileSync('git', ['-c', `safe.directory=${projectRoot}`, 'ls-files', '-z'], {
+test('all Git-detected text is privacy-scanned while public-copy terminology excludes historical specifications only by scope', async () => {
+  const tracked = execFileSync('git', ['-c', `safe.directory=${projectRoot}`, '-c', 'core.quotepath=false', 'grep', '--cached', '-Il', '--', '^'], {
     cwd: projectRoot,
     encoding: 'utf8',
-  }).split('\0').filter(Boolean);
+  }).split(/\r?\n/u).filter(Boolean);
   const publicTerminology = /(?:\bWP\d+\b|\bFig\.\s*\d*|\bMy Contribution\b)/i;
   const surfaces = await trackedTextSurfaces(tracked, {
     readIndex: (relativePath) => execFileSync('git', ['-c', `safe.directory=${projectRoot}`, 'show', `:${relativePath}`], { cwd: projectRoot, encoding: 'utf8' }),
@@ -595,19 +613,97 @@ test('all Git-tracked text is privacy-scanned while public-copy terminology excl
     },
   });
   for (const { relativePath, source: rawSource, kind } of surfaces) {
-    const extension = path.extname(relativePath);
-    if (trackedBinaryExtensions.has(extension) || approvedTrackedBinaryPath(relativePath)) continue;
-    assert.ok(relativePath === '.gitignore' || textExtensions.has(extension), `unclassified tracked file: ${relativePath}`);
     const source = rawSource.normalize('NFKC');
     assert.doesNotMatch(source, privateIdentifierPattern, `${relativePath} ${kind} bytes must exclude private identifiers`);
     assert.doesNotMatch(source, nonPublicNameSentinelPattern, `${relativePath} ${kind} bytes must exclude private names`);
-    assertNoAbsoluteLocalPath(source, `${relativePath} ${kind} bytes`);
+    assertNoAbsoluteLocalPath(sourceForTrackedLocalPathAudit(relativePath, source), `${relativePath} ${kind} bytes`);
     if (relativePath.startsWith('src/content/')) assert.doesNotMatch(source, publicTerminology, `${relativePath} ${kind} bytes must exclude internal public-copy terminology`);
   }
 
   for (const { route, raw } of await generatedDocuments()) {
     assert.doesNotMatch(raw.normalize('NFKC'), publicTerminology, `${route} must exclude internal public-copy terminology`);
   }
+});
+
+test('local-path fixture exemptions require the reviewed file and exact quoted token', () => {
+  const launcherFixture = 'editor/test/launcher.test.mjs';
+  const portableFixture = 'editor/test/portable-runtime-installer.test.mjs';
+  const batchFixture = '启动网站编辑器.bat';
+  const otherTrackedFile = 'README.md';
+  const windows = ['C', 'Windows'].join(':\\\\');
+  const portableNode = ['C', 'node.exe'].join(':/');
+  const exactWindowsToken = [quote, windows, quote].join('');
+  const exactNodeToken = [quote, portableNode, quote].join('');
+  const privateSuffix = ['private', 'notes'].join('\\\\');
+  const privateWindowsToken = [quote, windows, privateSuffix, quote].join('');
+  const userProfile = ['%', 'USERPROFILE', '%'].join('');
+  const userProfilePath = [userProfile, privateSuffix].join('\\\\');
+  const singleBackslashUserProfilePath = [userProfile, 'private'].join('\\');
+  const doubleQuote = '"';
+  const systemRoot = ['%', 'SystemRoot', '%'].join('');
+  const findstrPath = [systemRoot, 'System32', 'findstr.exe'].join('\\');
+  const powershellPath = [systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'].join('\\');
+  const exactFindstrToken = [doubleQuote, findstrPath, doubleQuote].join('');
+  const exactPowershellToken = [doubleQuote, powershellPath, doubleQuote].join('');
+  const privateFindstrToken = [doubleQuote, [findstrPath, 'private'].join('\\'), doubleQuote].join('');
+
+  assertNoAbsoluteLocalPath(
+    sourceForTrackedLocalPathAudit(launcherFixture, exactWindowsToken),
+    'reviewed launcher fixture token',
+  );
+  assertNoAbsoluteLocalPath(
+    sourceForTrackedLocalPathAudit(portableFixture, exactNodeToken),
+    'reviewed portable-runtime fixture token',
+  );
+  assertNoAbsoluteLocalPath(
+    sourceForTrackedLocalPathAudit(batchFixture, exactFindstrToken),
+    'reviewed batch findstr token',
+  );
+  assertNoAbsoluteLocalPath(
+    sourceForTrackedLocalPathAudit(batchFixture, exactPowershellToken),
+    'reviewed batch PowerShell token',
+  );
+  assert.notEqual(
+    absoluteLocalPath(sourceForTrackedLocalPathAudit(launcherFixture, privateWindowsToken)),
+    null,
+    'a reviewed fixture path with a private suffix must remain detected',
+  );
+  assert.notEqual(
+    absoluteLocalPath(sourceForTrackedLocalPathAudit(otherTrackedFile, exactWindowsToken)),
+    null,
+    'the same token in a non-reviewed tracked file must remain detected',
+  );
+  assert.notEqual(
+    absoluteLocalPath(sourceForTrackedLocalPathAudit(otherTrackedFile, userProfilePath)),
+    null,
+    'environment-variable local paths must remain detected',
+  );
+  assert.throws(
+    () => assertNoAbsoluteLocalPath(
+      sourceForTrackedLocalPathAudit(otherTrackedFile, singleBackslashUserProfilePath),
+      'single-backslash environment-variable local path',
+    ),
+    /must exclude absolute local paths/u,
+  );
+  assert.throws(
+    () => assertNoAbsoluteLocalPath(
+      sourceForTrackedLocalPathAudit(batchFixture, privateFindstrToken),
+      'batch system-root path with a private suffix',
+    ),
+    /must exclude absolute local paths/u,
+  );
+  assert.throws(
+    () => assertNoAbsoluteLocalPath(
+      sourceForTrackedLocalPathAudit(otherTrackedFile, exactFindstrToken),
+      'batch system-root token copied to another file',
+    ),
+    /must exclude absolute local paths/u,
+  );
+});
+
+test('local-path audit does not mistake a JavaScript environment-token regular expression for a path', () => {
+  const regexSource = ['/', '%', 'EDITOR_NO_OPEN', '%', '/i'].join('');
+  assert.doesNotThrow(() => assertNoAbsoluteLocalPath(regexSource, 'launcher regular expression'));
 });
 
 test('404 output exposes the exact not-found contract without a current primary-navigation link', async () => {
