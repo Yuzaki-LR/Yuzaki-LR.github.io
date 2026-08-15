@@ -36,7 +36,7 @@ BER resolution is 1/15 within one condition and 1/135 for the nine-condition ave
 <!-- editor:section id="comm-validation-limits" kind="standard" hidden="false" -->
 ## Validation and Limitations
 <!-- editor:block id="comm-method-limits" type="paragraph" hidden="false" -->
-Interpretation is limited by zero-phase `filtfilt`, known noise amplitude during tuning, a fixed threshold, and parameter tuning and evaluation on the same simulated signal. Excel and closed-form recalculations are implementation cross-checks, not independent predictive validation. The study supports no hardware, measurement, deployment or real-time-readiness claim.
+Interpretation is limited by zero-phase filtfilt, known noise amplitude during tuning, a fixed threshold, and parameter tuning and evaluation on the same simulated signal. Excel and closed-form recalculations are implementation cross-checks, not independent predictive validation. The study supports no hardware, measurement, deployment or real-time-readiness claim.
 <!-- editor:section id="comm-selected-evidence" kind="standard" hidden="false" -->
 ## Selected Technical Evidence
 <!-- editor:block id="comm-evidence-summary" type="paragraph" hidden="false" -->
