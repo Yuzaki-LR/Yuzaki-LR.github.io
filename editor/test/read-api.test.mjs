@@ -3,7 +3,7 @@ import http from 'node:http';
 import test from 'node:test';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { access, readFile, readdir, writeFile } from 'node:fs/promises';
+import { access, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createTestWorkspace } from '../../test/helpers.mjs';
 import { createRepositoryService } from '../server/repository-service.mjs';
@@ -12,6 +12,13 @@ import { loadSiteRepository } from '../../src/lib/content/repository.mjs';
 
 const readyTransactionService={recoverBeforeListen:async()=>({ok:true,recoveryOnly:false,results:[]}),runMutation:async(action)=>action()};
 const startEditor=(options)=>startEditorServer({...options,transactionService:readyTransactionService});
+const legacyEditorScreenshot=new URL('../../.superpowers/sdd/2026-08-12-yunxi-academic-website-editor-redesign/task-8-editor.png',import.meta.url);
+
+async function writeBrowserScreenshot(workspace,bytes){
+  const output=path.join(workspace.parent,'browser-evidence.png');
+  await writeFile(output,bytes);
+  return output;
+}
 
 async function treeHash(root) { const h=createHash('sha256'); async function walk(dir){ for(const e of (await readdir(dir,{withFileTypes:true})).sort((a,b)=>a.name.localeCompare(b.name))){ const p=path.join(dir,e.name); h.update(path.relative(root,p)); if(e.isDirectory()) await walk(p); else h.update(await readFile(p)); }} await walk(root); return h.digest('hex'); }
 async function raw(origin, target, { headers={}, method='GET' }={}) { const url=new URL(target,origin); return new Promise((resolve,reject)=>{ const req=http.request({hostname:url.hostname,port:url.port,path:url.pathname+url.search,method,headers,setHost:Object.keys(headers).some((name)=>name.toLowerCase()==='host')},res=>{let data='';res.setEncoding('utf8');res.on('data',c=>data+=c);res.on('end',()=>resolve({status:res.statusCode,headers:res.headers,body:data}));});req.on('error',reject);req.end();}); }
@@ -44,6 +51,36 @@ async function startBrowser(workspace) {
 }
 
 async function fixture(t) { const workspace=await createTestWorkspace(); const service=createRepositoryService({ projectRoot: workspace.root, csrfToken:'csrf-A' }); const started=await startEditor({projectRoot:workspace.root,preferredPort:0,token:'startup-A',csrfToken:'csrf-A',repositoryService:service}); t.after(async()=>{await started.close();await workspace.cleanup();}); return {workspace,...started}; }
+
+test('browser screenshot evidence stays inside its sentinel workspace', async () => {
+  const workspace=await createTestWorkspace();
+  let legacyBefore;
+  try {
+    legacyBefore=await readFile(legacyEditorScreenshot);
+  } catch(error) {
+    if(error?.code!=='ENOENT') throw error;
+    legacyBefore=null;
+  }
+  try {
+    const output=await writeBrowserScreenshot(workspace,Buffer.from('owned browser evidence'));
+    const ownedParent=await realpath(workspace.parent),resolvedOutput=await realpath(output);
+    assert.ok(resolvedOutput.startsWith(`${ownedParent}${path.sep}`),`${resolvedOutput} escapes the sentinel workspace`);
+  } finally {
+    let legacyAfter;
+    try {
+      legacyAfter=await readFile(legacyEditorScreenshot);
+    } catch(error) {
+      if(error?.code!=='ENOENT') throw error;
+      legacyAfter=null;
+    }
+    const legacyUnchanged=legacyBefore===null?legacyAfter===null:legacyAfter!==null&&legacyBefore.equals(legacyAfter);
+    if(!legacyUnchanged){
+      if(legacyBefore===null) await rm(legacyEditorScreenshot,{force:true});
+      else await writeFile(legacyEditorScreenshot,legacyBefore);
+    }
+    await workspace.cleanup();
+  }
+});
 
 test('repository loader routes every bootstrap read through its injected IO boundary', async (t) => {
   const workspace=await createTestWorkspace(); t.after(workspace.cleanup);
@@ -172,7 +209,7 @@ test('ordinary browser navigation stays on exact loopback origin and bootstraps 
     assert.equal(clickResult.topAfter,clickResult.topBefore);assert.equal(clickResult.frameAfter,clickResult.frameBefore);assert.equal(clickResult.selected,true);
     const viewportResult=(await cdp.send('Runtime.evaluate',{expression:`(()=>{const result=[];for(const button of document.querySelectorAll('.viewport-switcher [data-width]')){button.click();result.push({label:button.textContent.trim(),width:document.querySelector('.preview-stage').dataset.width,status:document.querySelector('#draft-status').textContent});}return result;})()`,returnByValue:true})).result.value;
     assert.deepEqual(viewportResult,[{label:'桌面',width:'desktop',status:'有未保存更改'},{label:'平板',width:'tablet',status:'有未保存更改'},{label:'手机',width:'mobile',status:'有未保存更改'}]);
-    const screenshot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});await writeFile(new URL('../../.superpowers/sdd/2026-08-12-yunxi-academic-website-editor-redesign/task-8-editor.png',import.meta.url),Buffer.from(screenshot.data,'base64'));
+    const screenshot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});await writeBrowserScreenshot(f.workspace,Buffer.from(screenshot.data,'base64'));
     assert.equal(requests.some(request=>request.method!=='GET'),false);
     assert.deepEqual([...new Set(cdp.events.slice(eventStart).filter(event=>event.method==='Network.requestWillBeSent').map(event=>new URL(event.params.request.url).origin))],[f.origin]);
     assert.deepEqual(cdp.events.slice(eventStart).filter(event=>event.method==='Runtime.exceptionThrown').map(event=>event.params.exceptionDetails.text),[]);
