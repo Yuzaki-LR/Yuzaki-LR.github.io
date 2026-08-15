@@ -745,7 +745,12 @@ test('robots output is exactly the approved permissive policy with only an optio
   assert.ok(existsSync(filename), 'expected generated robots.txt');
   const robots = await readFile(filename, 'utf8');
   assert.ok(
-    robots === 'User-agent: *\nAllow: /' || robots === 'User-agent: *\nAllow: /\n',
+    [
+      'User-agent: *\nAllow: /',
+      'User-agent: *\nAllow: /\n',
+      'User-agent: *\r\nAllow: /',
+      'User-agent: *\r\nAllow: /\r\n',
+    ].includes(robots),
     'robots.txt must contain only the approved permissive policy',
   );
 });

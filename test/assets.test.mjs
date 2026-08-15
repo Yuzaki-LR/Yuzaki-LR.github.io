@@ -85,7 +85,12 @@ test('evidence manifest rejects invalid variants and unsafe or colliding destina
 
 test('legacy public derivatives are absent after replacement', async () => {
   const directory = path.join(projectRoot, 'public', 'assets', 'projects');
-  const actual = await readdir(directory);
+  let actual = [];
+  try {
+    actual = await readdir(directory);
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
   assert.deepEqual(actual.filter((name) => stale.includes(name)), []);
 });
 
