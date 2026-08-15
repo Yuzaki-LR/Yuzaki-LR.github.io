@@ -3,9 +3,15 @@ kind: individual
 category: Individual laboratory project
 title: Communication-System Modelling and Filter Optimisation
 shortTitle: Communication-System Modelling
-summary: Developed a reproducible MATLAB study connecting thermal-noise theory, distance-dependent attenuation and coherent OOK demodulation with a controlled comparison of four filtering methods under AWGN.
-role: Individual modelling, implementation and analysis
-methods: [MATLAB, Signal processing, BER and MSE analysis]
+summary: >-
+  Developed a reproducible MATLAB study connecting thermal-noise theory,
+  distance-dependent attenuation and coherent OOK demodulation with a controlled
+  comparison of four filtering methods under AWGN.
+role: 'Individual modelling, implementation and analysis'
+methods:
+  - MATLAB
+  - Signal processing
+  - BER and MSE analysis
 featured: true
 order: 3
 ---

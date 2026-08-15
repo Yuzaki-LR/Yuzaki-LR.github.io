@@ -3,9 +3,17 @@ kind: team
 category: Team systems-design project
 title: Future Ocean Habitat — Integrated Systems Concept Design
 shortTitle: Future Ocean Habitat
-summary: A team systems-design concept for a future ocean habitat, integrating energy, communication and control, thermal management and an underwater data centre across shared engineering interfaces.
-role: Group Coordinator; lead for the Energy System, Communication, Monitoring and Control Systems, and Underwater Data Centre
-methods: [Systems engineering, Requirements analysis, Concept design]
+summary: >-
+  A team systems-design concept for a future ocean habitat, integrating energy,
+  communication and control, thermal management and an underwater data centre
+  across shared engineering interfaces.
+role: >-
+  Group Coordinator; lead for the Energy System, Communication, Monitoring and
+  Control Systems, and Underwater Data Centre
+methods:
+  - Systems engineering
+  - Requirements analysis
+  - Concept design
 featured: true
 order: 1
 ---

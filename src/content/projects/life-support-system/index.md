@@ -3,9 +3,15 @@ kind: individual
 category: Individual detailed-design project
 title: Multi-Domain Life-Support Power and Control Simulation
 shortTitle: Life-Support Power and Control
-summary: An individual Simulink/Simscape design coupling power conversion with water, atmospheric-gas, thermal and humidity regulation for a future ocean habitat.
+summary: >-
+  An individual Simulink/Simscape design coupling power conversion with water,
+  atmospheric-gas, thermal and humidity regulation for a future ocean habitat.
 role: Designer and modeller of the individually submitted detailed design
-methods: [MATLAB/Simulink, Simscape Electrical, Simscape Fluids, Closed-loop control]
+methods:
+  - MATLAB/Simulink
+  - Simscape Electrical
+  - Simscape Fluids
+  - Closed-loop control
 featured: true
 order: 2
 ---
